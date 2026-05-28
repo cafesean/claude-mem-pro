@@ -7,3 +7,8 @@ export * from './memory-item.js';
 export * from './project.js';
 export * from './session.js';
 export * from './team.js';
+export * from './topics.js';
+export * from './dev-workflow-kind.js';
+export * from './session-record.js';
+export * from './learning-record.js';
+export * from './golden-doc.js';
