@@ -315,13 +315,20 @@ async function cmdBuildInputs(flags: ArgMap): Promise<void> {
     const inputs = {
       sessionId,
       projectName: obs[0]?.project ?? flags.get('project'),
-      observations: obs.map((o) => ({
-        id: String(o.id),
-        kind: o.type,
-        content: summariseObservationForContext(o),
-        metadata: o.metadata ?? {},
-        createdAt: o.created_at
-      })),
+      observations: obs.map((o) => {
+        // Promote dev_workflow.kind to the top-level kind so the synthesizer
+        // sees enriched observations as architecture_issue / lesson / etc.,
+        // falling back to the legacy claude-mem `type` for raw observations.
+        const devWf = (o.metadata?.dev_workflow as Record<string, unknown> | undefined) ?? null;
+        const promotedKind = devWf && typeof devWf.kind === 'string' ? devWf.kind : o.type;
+        return {
+          id: String(o.id),
+          kind: promotedKind,
+          content: summariseObservationForContext(o),
+          metadata: o.metadata ?? {},
+          createdAt: o.created_at
+        };
+      }),
       transcriptExcerpt: filesModified.length
         ? `Files modified across session: ${filesModified.slice(0, 30).join(', ')}`
         : undefined,
