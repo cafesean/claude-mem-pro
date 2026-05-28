@@ -42,6 +42,7 @@ import {
 } from '../../services/dev-workflow/sqlite-observation-adapter.js';
 import { detectKinds } from '../../server/generation/dev-workflow-prompts/kind-detector.js';
 import { getPromptModule } from '../../server/generation/dev-workflow-prompts/index.js';
+import { SessionInferenceEngine, type InferenceObservation } from '../../services/dev-workflow/session-inference.js';
 import {
   DevWorkflowPayloadSchema
 } from '../../core/schemas/dev-workflow-kind.js';
@@ -543,6 +544,84 @@ function uniq<T>(items: readonly T[]): T[] {
   return Array.from(new Set(items));
 }
 
+async function cmdInferSession(flags: ArgMap): Promise<void> {
+  const sessionId = flags.get('session-id');
+  if (!sessionId) {
+    console.error(pc.red('usage: infer-session --session-id=UUID [--dry-run=true] [--project=X]'));
+    process.exit(1);
+  }
+  const dryRun = flags.get('dry-run') === 'true';
+  const project = flags.get('project');
+  const adapter = openAdapter(flags, { readonly: dryRun });
+
+  try {
+    const obs = adapter.fetchObservations({ sessionId, project, limit: 200 });
+    if (obs.length === 0) {
+      printJson({ session_id: sessionId, items: [], notes: ['no observations for this session'] });
+      return;
+    }
+
+    const cluster: InferenceObservation[] = obs.map((o) => {
+      const devWf = (o.metadata?.dev_workflow as Record<string, unknown> | undefined) ?? null;
+      return {
+        id: o.id,
+        kind: o.type,
+        title: o.title,
+        narrative: o.narrative,
+        facts: o.facts,
+        files_modified: o.files_modified,
+        promoted_kind: devWf && typeof devWf.kind === 'string' ? (devWf.kind as string) : null
+      };
+    });
+
+    const projectName = obs[0]?.project ?? project ?? 'unknown';
+    const llmCaller = pickLlmCaller();
+    const engine = new SessionInferenceEngine(llmCaller);
+    const result = await engine.infer({
+      sessionId,
+      projectName,
+      observations: cluster
+    });
+
+    const persisted: Array<{ id: number; kind: string; title?: string }> = [];
+    if (!dryRun) {
+      for (const item of result.items) {
+        const payload = item.payload as Record<string, unknown>;
+        const titleHint =
+          (payload.lesson as string) ??
+          (payload.issue as string) ??
+          (payload.chosen as string) ??
+          `inferred ${item.kind}`;
+        const id = adapter.insertInferredObservation({
+          memorySessionId: sessionId,
+          project: projectName,
+          devWorkflowPayload: payload,
+          evidenceObservationIds: item.evidence_observation_ids,
+          title: titleHint.slice(0, 200),
+          narrative: JSON.stringify(payload)
+        });
+        persisted.push({ id, kind: item.kind, title: titleHint.slice(0, 80) });
+      }
+    }
+
+    printJson({
+      session_id: sessionId,
+      cluster_size: cluster.length,
+      inferred_count: result.items.length,
+      rejected_count: result.rejectedItems.length,
+      persisted_count: persisted.length,
+      persisted,
+      items: result.items,
+      rejected_items: result.rejectedItems,
+      notes: result.notes,
+      duration_ms: result.durationMs,
+      dry_run: dryRun
+    });
+  } finally {
+    adapter.close();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Entry
 // ---------------------------------------------------------------------------
@@ -594,6 +673,9 @@ export async function runDevWorkflowCommand(args: readonly string[]): Promise<vo
       return;
     case 'backfill':
       await cmdBackfill(flags);
+      return;
+    case 'infer-session':
+      await cmdInferSession(flags);
       return;
     default:
       console.error(pc.red(`unknown dev-workflow subcommand: ${subcommand}`));

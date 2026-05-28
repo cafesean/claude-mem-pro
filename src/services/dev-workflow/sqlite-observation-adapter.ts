@@ -238,6 +238,54 @@ export class SqliteObservationAdapter {
     this.db.prepare('UPDATE observations SET metadata = ? WHERE id = ?').run(JSON.stringify(merged), observationId);
   }
 
+  /**
+   * Insert a brand-new observation row carrying a dev_workflow payload —
+   * used by session-level inference to persist synthesised lessons /
+   * decisions / arch_issues that did not exist as raw observations.
+   *
+   * source_session is the SAME memory_session_id as the cluster so the
+   * inferred items belong to the same session in queries.
+   */
+  insertInferredObservation(input: {
+    memorySessionId: string;
+    project: string;
+    devWorkflowPayload: Record<string, unknown>;
+    evidenceObservationIds: Array<number | string>;
+    title?: string;
+    narrative?: string;
+  }): number {
+    const epoch = Date.now();
+    const createdAt = new Date(epoch).toISOString();
+    const metadata = {
+      dev_workflow: input.devWorkflowPayload,
+      inference: {
+        source: 'session-inference',
+        evidence_observation_ids: input.evidenceObservationIds.map(String),
+        generated_at: createdAt
+      }
+    };
+    const result = this.db.prepare(
+      `INSERT INTO observations (
+        memory_session_id, project, type, title, narrative,
+        facts, concepts, files_read, files_modified, metadata,
+        created_at, created_at_epoch
+      ) VALUES (?, ?, ?, ?, ?, '[]', '[]', '[]', '[]', ?, ?, ?)`
+    ).run(
+      input.memorySessionId,
+      input.project,
+      (input.devWorkflowPayload.kind as string) ?? 'lesson',
+      input.title ?? null,
+      input.narrative ?? null,
+      JSON.stringify(metadata),
+      createdAt,
+      epoch
+    ) as { lastInsertRowid?: number | bigint };
+    const row = this.db.prepare(
+      'SELECT last_insert_rowid() AS id'
+    ).get() as { id: number | bigint };
+    return Number(row.id);
+  }
+
   /** Lookup the most recent observation epoch — useful for live tail polling. */
   latestEpoch(): number | null {
     const row = this.db.prepare('SELECT MAX(created_at_epoch) AS latest FROM observations').get() as
