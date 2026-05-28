@@ -225,7 +225,8 @@ async function cmdSynthesizeSession(flags: ArgMap): Promise<void> {
   };
 
   const llmCaller = pickLlmCaller();
-  const synth = new SessionSynthesizer(llmCaller);
+  const failOpen = flags.get('fail-open') === 'true';
+  const synth = new SessionSynthesizer(llmCaller, { failOpen });
   const result = await synth.synthesise(inputs as never, recordMeta);
   printJson(result);
 }

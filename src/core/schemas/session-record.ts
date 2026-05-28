@@ -54,12 +54,22 @@ export const CommitEntrySchema = z.object({
 });
 export type CommitEntry = z.infer<typeof CommitEntrySchema>;
 
-export const FileChangeSchema = z.object({
+const FileChangeObjectSchema = z.object({
   path: NonEmpty,
   /** M, A, D, R per `git diff --name-status`. */
-  changeType: z.enum(['M', 'A', 'D', 'R']),
+  changeType: z.enum(['M', 'A', 'D', 'R']).default('M'),
   description: z.string().optional()
 });
+
+// LLM-friendly preprocessor: accept either a plain path string OR a full
+// FileChange object. Lets synthesisers emit `["src/foo.ts"]` and have it
+// normalised into `[{path: "src/foo.ts", changeType: "M"}]`.
+export const FileChangeSchema = z.preprocess((val) => {
+  if (typeof val === 'string') {
+    return { path: val, changeType: 'M' };
+  }
+  return val;
+}, FileChangeObjectSchema);
 export type FileChange = z.infer<typeof FileChangeSchema>;
 
 export const GitStatusSnapshotSchema = z.object({

@@ -137,8 +137,19 @@ const SYNTHESIS_RESPONSE_SCHEMA: object = {
           what_changed: { type: 'string' },
           problem_analysis_ref: { type: 'string' },
           implementation_details: { type: 'string' },
-          commit_log: { type: 'array' },
-          files_changed: { type: 'array' },
+          commit_log: { type: 'array', items: { type: 'object', required: ['hash', 'message'], properties: { hash: { type: 'string' }, message: { type: 'string' }, files: { type: 'array', items: { type: 'string' } } } } },
+          files_changed: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['path'],
+              properties: {
+                path: { type: 'string' },
+                changeType: { type: 'string', enum: ['M', 'A', 'D', 'R'] },
+                description: { type: 'string' }
+              }
+            }
+          },
           git_status: { type: 'object' }
         }
       }
