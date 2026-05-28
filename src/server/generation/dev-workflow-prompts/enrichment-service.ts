@@ -37,6 +37,8 @@ import {
 import { getPromptModule, modelForKind } from './index.js';
 import type { ModelTier, PromptContext, PromptModule } from './types.js';
 
+export type { ModelTier, PromptContext, PromptModule } from './types.js';
+
 // ---------------------------------------------------------------------------
 // Caller contract — kept narrow so any provider can satisfy it.
 // ---------------------------------------------------------------------------
