@@ -33,6 +33,7 @@ import { renderSessionMarkdown } from '../../services/dev-workflow/session-markd
 import { LearningExtractor } from '../../services/dev-workflow/learning-extractor.js';
 import { GoldenDocGenerator } from '../../services/dev-workflow/golden-doc-generator.js';
 import { buildAnthropicLlmCaller } from '../../services/dev-workflow/anthropic-llm-caller.js';
+import { buildSubscriptionLlmCaller } from '../../services/dev-workflow/subscription-llm-caller.js';
 
 type ArgMap = Map<string, string>;
 
@@ -61,6 +62,28 @@ function requireApiKey(): string {
     process.exit(1);
   }
   return key;
+}
+
+/**
+ * Auto-detect best LlmCaller based on environment.
+ *   1. CLAUDE_MEM_DW_LLM=subscription|api-key (explicit override)
+ *   2. ANTHROPIC_API_KEY present → api-key (fast, cheap, structured tool_use)
+ *   3. otherwise → subscription (claude CLI, $0.10/call but no key required)
+ */
+function pickLlmCaller(): ReturnType<typeof buildAnthropicLlmCaller> | ReturnType<typeof buildSubscriptionLlmCaller> {
+  const override = process.env.CLAUDE_MEM_DW_LLM;
+  if (override === 'api-key') {
+    return buildAnthropicLlmCaller({ apiKey: requireApiKey() });
+  }
+  if (override === 'subscription') {
+    console.error(pc.dim('using subscription auth (claude CLI)'));
+    return buildSubscriptionLlmCaller();
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    return buildAnthropicLlmCaller({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  console.error(pc.dim('no ANTHROPIC_API_KEY found — using subscription auth via claude CLI'));
+  return buildSubscriptionLlmCaller();
 }
 
 async function readJsonFile<T>(path: string): Promise<T> {
@@ -146,7 +169,7 @@ async function cmdEnrich(flags: ArgMap): Promise<void> {
     process.exit(1);
   }
 
-  const llmCaller = buildAnthropicLlmCaller({ apiKey: requireApiKey() });
+  const llmCaller = pickLlmCaller();
   const enrichment = new DevWorkflowEnrichmentService(llmCaller, { minConfidence: 0 });
   const result = await enrichment.enrich({
     narrative,
@@ -190,7 +213,7 @@ async function cmdSynthesizeSession(flags: ArgMap): Promise<void> {
     date: (flags.get('date') ?? new Date().toISOString().slice(0, 10)) as string
   };
 
-  const llmCaller = buildAnthropicLlmCaller({ apiKey: requireApiKey() });
+  const llmCaller = pickLlmCaller();
   const synth = new SessionSynthesizer(llmCaller);
   const result = await synth.synthesise(inputs as never, recordMeta);
   printJson(result);
@@ -204,7 +227,7 @@ async function cmdExtractLearning(flags: ArgMap): Promise<void> {
     process.exit(1);
   }
   const sources = await readJsonFile(sourcesPath);
-  const llmCaller = buildAnthropicLlmCaller({ apiKey: requireApiKey() });
+  const llmCaller = pickLlmCaller();
   const extractor = new LearningExtractor(llmCaller, {
     minLessons: Number(flags.get('min-lessons') ?? 3)
   });
@@ -225,7 +248,7 @@ async function cmdGoldenDoc(flags: ArgMap): Promise<void> {
   const related = await Promise.all(relatedPaths.map((p) => readJsonFile<Record<string, unknown>>(p)));
 
   const outputPath = flags.get('out') ?? `_context/_arch/${primary.topic}.draft.md`;
-  const llmCaller = buildAnthropicLlmCaller({ apiKey: requireApiKey() });
+  const llmCaller = pickLlmCaller();
   const generator = new GoldenDocGenerator(llmCaller);
   const result = await generator.generate({
     primary: primary as never,
