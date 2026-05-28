@@ -10,3 +10,4 @@ export * from './team.js';
 export * from './topics.js';
 export * from './dev-workflow-kind.js';
 export * from './session-record.js';
+export * from './learning-record.js';
