@@ -34,6 +34,17 @@ import { LearningExtractor } from '../../services/dev-workflow/learning-extracto
 import { GoldenDocGenerator } from '../../services/dev-workflow/golden-doc-generator.js';
 import { buildAnthropicLlmCaller } from '../../services/dev-workflow/anthropic-llm-caller.js';
 import { buildSubscriptionLlmCaller } from '../../services/dev-workflow/subscription-llm-caller.js';
+import {
+  SqliteObservationAdapter,
+  buildDetectorEvent,
+  summariseObservationForContext,
+  type ParsedObservation
+} from '../../services/dev-workflow/sqlite-observation-adapter.js';
+import { detectKinds } from '../../server/generation/dev-workflow-prompts/kind-detector.js';
+import { getPromptModule } from '../../server/generation/dev-workflow-prompts/index.js';
+import {
+  DevWorkflowPayloadSchema
+} from '../../core/schemas/dev-workflow-kind.js';
 
 type ArgMap = Map<string, string>;
 
@@ -265,6 +276,266 @@ async function cmdGoldenDoc(flags: ArgMap): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// SQLite-backed subcommands (sessions, build-inputs, backfill)
+// ---------------------------------------------------------------------------
+
+function openAdapter(flags: ArgMap, options: { readonly?: boolean } = {}): SqliteObservationAdapter {
+  const dbPath = flags.get('db') ?? `${process.env.HOME}/.claude-mem/claude-mem.db`;
+  return new SqliteObservationAdapter(dbPath, options);
+}
+
+async function cmdSessions(flags: ArgMap): Promise<void> {
+  const adapter = openAdapter(flags, { readonly: true });
+  try {
+    const limit = Number(flags.get('limit') ?? '20');
+    const rows = adapter.listSessions(limit);
+    printJson(rows);
+  } finally {
+    adapter.close();
+  }
+}
+
+async function cmdBuildInputs(flags: ArgMap): Promise<void> {
+  const sessionId = flags.get('session-id');
+  if (!sessionId) {
+    console.error(pc.red('usage: build-inputs --session-id=UUID [--project=X] [--limit=N]'));
+    process.exit(1);
+  }
+  const adapter = openAdapter(flags, { readonly: true });
+  try {
+    const obs = adapter.fetchObservations({
+      sessionId,
+      project: flags.get('project'),
+      limit: Number(flags.get('limit') ?? '500')
+    });
+
+    const filesModified = uniq(obs.flatMap((o) => o.files_modified));
+    const filesRead = uniq(obs.flatMap((o) => o.files_read));
+
+    const inputs = {
+      sessionId,
+      projectName: obs[0]?.project ?? flags.get('project'),
+      observations: obs.map((o) => ({
+        id: String(o.id),
+        kind: o.type,
+        content: summariseObservationForContext(o),
+        metadata: o.metadata ?? {},
+        createdAt: o.created_at
+      })),
+      transcriptExcerpt: filesModified.length
+        ? `Files modified across session: ${filesModified.slice(0, 30).join(', ')}`
+        : undefined,
+      git: {
+        commits: [] as string[]
+      },
+      specPaths: filesRead.filter((f) => f.includes('_specs') || f.endsWith('.spec.md'))
+    };
+
+    printJson(inputs);
+  } finally {
+    adapter.close();
+  }
+}
+
+interface BackfillReport {
+  scanned: number;
+  detector_skipped_legacy: number;
+  detector_no_match: number;
+  attempted: number;
+  enriched: number;
+  failed: number;
+  cost_usd: number;
+  per_kind: Record<string, number>;
+  notes: string[];
+}
+
+async function cmdBackfill(flags: ArgMap): Promise<void> {
+  const dryRun = flags.get('dry-run') === 'true';
+  const writeBack = !dryRun;
+  const maxCostUsd = Number(flags.get('max-cost') ?? '2');
+  const maxObservations = Number(flags.get('max') ?? '50');
+  const minConfidence = Number(flags.get('min-confidence') ?? '0.6');
+  const sessionId = flags.get('session-id');
+  const project = flags.get('project');
+  const watch = flags.get('watch') === 'true';
+  const watchIntervalSec = Number(flags.get('watch-interval') ?? '60');
+  let sinceEpoch = flags.get('since-epoch') ? Number(flags.get('since-epoch')) : undefined;
+
+  if (watch) {
+    // Live-tail mode: poll for new observations, run enrichment forever.
+    const adapter = openAdapter(flags, { readonly: false });
+    try {
+      if (sinceEpoch === undefined) {
+        sinceEpoch = adapter.latestEpoch() ?? 0;
+        console.error(pc.dim(`watch mode: starting from epoch ${sinceEpoch} (now)`));
+      }
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const report = await runBackfillScan(adapter, pickLlmCaller(), {
+          dryRun,
+          maxCostUsd,
+          maxObservations,
+          minConfidence,
+          sessionId,
+          project,
+          sinceEpoch
+        });
+        if (report.scanned > 0) {
+          process.stderr.write(`[watch] scanned=${report.scanned} enriched=${report.enriched} cost=$${report.cost_usd.toFixed(3)}\n`);
+        }
+        sinceEpoch = adapter.latestEpoch() ?? sinceEpoch;
+        await new Promise((r) => setTimeout(r, watchIntervalSec * 1000));
+      }
+    } finally {
+      adapter.close();
+    }
+  }
+
+  const adapter = openAdapter(flags, { readonly: false });
+  try {
+    const report = await runBackfillScan(adapter, pickLlmCaller(), {
+      dryRun,
+      maxCostUsd,
+      maxObservations,
+      minConfidence,
+      sessionId,
+      project,
+      sinceEpoch
+    });
+    printJson(report);
+  } finally {
+    adapter.close();
+  }
+}
+
+interface BackfillScanOptions {
+  dryRun: boolean;
+  maxCostUsd: number;
+  maxObservations: number;
+  minConfidence: number;
+  sessionId?: string;
+  project?: string;
+  sinceEpoch?: number;
+}
+
+async function runBackfillScan(
+  adapter: SqliteObservationAdapter,
+  enrichLlm: ReturnType<typeof pickLlmCaller>,
+  options: BackfillScanOptions
+): Promise<BackfillReport> {
+  const { dryRun, maxCostUsd, maxObservations, minConfidence, sessionId, project, sinceEpoch } = options;
+  const writeBack = !dryRun;
+  const report: BackfillReport = {
+    scanned: 0,
+    detector_skipped_legacy: 0,
+    detector_no_match: 0,
+    attempted: 0,
+    enriched: 0,
+    failed: 0,
+    cost_usd: 0,
+    per_kind: {},
+    notes: [
+      dryRun ? 'dry-run mode: no writes' : 'live mode: writes dev_workflow into metadata',
+      `cost cap: $${maxCostUsd.toFixed(2)}`,
+      `max observations: ${maxObservations}`
+    ]
+  };
+
+  const legacyKinds = new Set(['change', 'feature', 'discovery']);
+
+  try {
+    await adapter.forEachObservation(
+      {
+        sessionId,
+        project,
+        sinceEpoch,
+        withoutDevWorkflow: true,
+        limit: maxObservations
+      },
+      async (obs) => {
+        report.scanned++;
+
+        const event = buildDetectorEvent(obs);
+        const detections = detectKinds(event).filter((d) => d.confidence >= minConfidence);
+
+        // Drop legacy kinds — claude-mem already handles them
+        const promotable = detections.filter((d) => !legacyKinds.has(d.kind));
+        if (promotable.length === 0) {
+          if (detections.length > 0) report.detector_skipped_legacy++;
+          else report.detector_no_match++;
+          return;
+        }
+
+        // Prefer the highest-confidence non-legacy kind
+        const target = promotable[0];
+        const promptModule = getPromptModule(target.kind);
+        if (!promptModule) {
+          report.detector_no_match++;
+          return;
+        }
+
+        if (report.cost_usd >= maxCostUsd) {
+          report.notes.push(`cost cap reached at scan #${report.scanned}; stopping early`);
+          return;
+        }
+
+        report.attempted++;
+        if (!report.per_kind[target.kind]) report.per_kind[target.kind] = 0;
+
+        try {
+          const llmRequest = {
+            systemPrompt: promptModule.systemPrompt,
+            userPrompt: promptModule.buildUserPrompt({
+              narrative: event.narrative,
+              topicsList: TOPICS,
+              filesModified: event.filesModified,
+              filesRead: event.filesRead,
+              additionalContext: event.agentText
+            }),
+            model: promptModule.model,
+            responseJsonSchema: promptModule.responseJsonSchema
+          };
+
+          const response = await enrichLlm(llmRequest);
+          report.cost_usd += response.usage?.estimatedUsd ?? 0;
+
+          const parsed = DevWorkflowPayloadSchema.safeParse({
+            ...(response.parsed as Record<string, unknown>),
+            kind: target.kind
+          });
+
+          if (!parsed.success) {
+            report.failed++;
+            report.notes.push(
+              `validation failed at obs ${obs.id} (kind=${target.kind}): ${parsed.error.issues[0]?.message ?? 'invalid'}`
+            );
+            return;
+          }
+
+          report.per_kind[target.kind]++;
+          report.enriched++;
+
+          if (writeBack) {
+            adapter.writeDevWorkflowMetadata(obs.id, parsed.data as Record<string, unknown>);
+          }
+        } catch (err) {
+          report.failed++;
+          report.notes.push(`llm call failed at obs ${obs.id}: ${(err as Error).message?.slice(0, 200)}`);
+        }
+      }
+    );
+  } catch (err) {
+    report.notes.push(`scan loop error: ${(err as Error).message?.slice(0, 200)}`);
+  }
+
+  return report;
+}
+
+function uniq<T>(items: readonly T[]): T[] {
+  return Array.from(new Set(items));
+}
+
+// ---------------------------------------------------------------------------
 // Entry
 // ---------------------------------------------------------------------------
 
@@ -306,6 +577,15 @@ export async function runDevWorkflowCommand(args: readonly string[]): Promise<vo
       return;
     case 'golden-doc':
       await cmdGoldenDoc(flags);
+      return;
+    case 'sessions':
+      await cmdSessions(flags);
+      return;
+    case 'build-inputs':
+      await cmdBuildInputs(flags);
+      return;
+    case 'backfill':
+      await cmdBackfill(flags);
       return;
     default:
       console.error(pc.red(`unknown dev-workflow subcommand: ${subcommand}`));
