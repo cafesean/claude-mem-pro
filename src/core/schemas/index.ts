@@ -11,3 +11,4 @@ export * from './topics.js';
 export * from './dev-workflow-kind.js';
 export * from './session-record.js';
 export * from './learning-record.js';
+export * from './golden-doc.js';
