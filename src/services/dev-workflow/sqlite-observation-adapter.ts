@@ -264,7 +264,14 @@ export class SqliteObservationAdapter {
         generated_at: createdAt
       }
     };
-    const result = this.db.prepare(
+
+    // The observations table has a FK constraint to sdk_sessions(memory_session_id).
+    // Many older / imported observation rows reference memory_session_id values
+    // that never had a corresponding sdk_sessions row. Ensure one exists so the
+    // FK insert succeeds.
+    this.ensureSdkSessionRow(input.memorySessionId, input.project);
+
+    this.db.prepare(
       `INSERT INTO observations (
         memory_session_id, project, type, title, narrative,
         facts, concepts, files_read, files_modified, metadata,
@@ -279,11 +286,40 @@ export class SqliteObservationAdapter {
       JSON.stringify(metadata),
       createdAt,
       epoch
-    ) as { lastInsertRowid?: number | bigint };
+    );
     const row = this.db.prepare(
       'SELECT last_insert_rowid() AS id'
     ).get() as { id: number | bigint };
     return Number(row.id);
+  }
+
+  /**
+   * Idempotently create an sdk_sessions row for a memory_session_id so the
+   * observations FK insert can succeed. content_session_id is derived with a
+   * `dw-inference-` prefix so it never collides with a real Claude Code
+   * session id already in sdk_sessions.
+   */
+  private ensureSdkSessionRow(memorySessionId: string, project: string): void {
+    const existing = this.db
+      .prepare('SELECT 1 AS x FROM sdk_sessions WHERE memory_session_id = ? LIMIT 1')
+      .get(memorySessionId) as { x: number } | undefined;
+    if (existing) return;
+    const epoch = Date.now();
+    const startedAt = new Date(epoch).toISOString();
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO sdk_sessions (
+          content_session_id, memory_session_id, project,
+          platform_source, started_at, started_at_epoch, status
+        ) VALUES (?, ?, ?, 'claude-mem-dw', ?, ?, 'completed')`
+      )
+      .run(
+        `dw-inference-${memorySessionId}`,
+        memorySessionId,
+        project,
+        startedAt,
+        epoch
+      );
   }
 
   /** Lookup the most recent observation epoch — useful for live tail polling. */
