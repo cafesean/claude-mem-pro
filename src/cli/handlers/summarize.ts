@@ -133,6 +133,28 @@ export const summarizeHandler: EventHandler = {
     }
 
     logger.debug('HOOK', 'Summary request queued, exiting hook');
+
+    // Phase 3 live wiring — fire-and-forget SessionBoundary close.
+    // Gated behind CLAUDE_MEM_DW_AUTO_CLOSE_SESSION. Schedules synthesis
+    // queueing via the worker; actual sonnet synthesis runs out-of-band
+    // via the `claude-mem-dw dw synthesize-session` CLI.
+    try {
+      const autoClose =
+        process.env.CLAUDE_MEM_DW_AUTO_CLOSE_SESSION === '1' ||
+        process.env.CLAUDE_MEM_DW_AUTO_CLOSE_SESSION === 'true';
+      if (autoClose) {
+        void executeWithWorkerFallback('/api/sessions/dev-workflow/close', 'POST', {
+          memorySessionId: sessionId,
+          project: input.cwd ? input.cwd.split('/').pop() ?? 'unknown' : 'unknown',
+          trigger: 'session-stop-hook'
+        }).catch((err) => {
+          logger.warn('HOOK', `dw session close dispatch failed: ${(err as Error).message?.slice(0, 200)}`);
+        });
+      }
+    } catch (err) {
+      logger.warn('HOOK', `dw session close setup failed: ${(err as Error).message?.slice(0, 200)}`);
+    }
+
     return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
   },
 };

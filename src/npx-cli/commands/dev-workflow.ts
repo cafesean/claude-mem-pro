@@ -215,7 +215,7 @@ async function cmdRenderSession(flags: ArgMap): Promise<void> {
 async function cmdSynthesizeSession(flags: ArgMap): Promise<void> {
   const inputsPath = flags.get('inputs');
   if (!inputsPath) {
-    console.error(pc.red('usage: synthesize-session --inputs=FILE.json'));
+    console.error(pc.red('usage: synthesize-session --inputs=FILE.json [--persist=true]'));
     process.exit(1);
   }
   const inputs = await readJsonFile(inputsPath);
@@ -229,17 +229,113 @@ async function cmdSynthesizeSession(flags: ArgMap): Promise<void> {
   const failOpen = flags.get('fail-open') === 'true';
   const synth = new SessionSynthesizer(llmCaller, { failOpen });
   const result = await synth.synthesise(inputs as never, recordMeta);
+
+  // Phase 4 — persist into session_records when --persist=true.
+  if (flags.get('persist') === 'true' && result.record) {
+    const adapter = openAdapter(flags, { readonly: false });
+    try {
+      const rec = result.record;
+      // Cast to the SessionStore shape via raw SQLite write.
+      const Database = (await import('node:sqlite')).DatabaseSync as new (path: string) => {
+        prepare(sql: string): { run(...p: unknown[]): unknown };
+      };
+      const db = new Database(adapter.dbPath);
+      db.prepare(
+        `INSERT INTO session_records (
+          id, memory_session_id, title, date, projects, branch, status, type,
+          topics, tags, last_updated, sdk_touched, apps_touched, commits,
+          related_sessions, specs, content, observation_refs, generation_metadata,
+          created_at, created_at_epoch
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title=excluded.title, status=excluded.status, last_updated=excluded.last_updated,
+          topics=excluded.topics, tags=excluded.tags, commits=excluded.commits,
+          content=excluded.content, observation_refs=excluded.observation_refs,
+          generation_metadata=excluded.generation_metadata`
+      ).run(
+        rec.id,
+        rec.session_id,
+        rec.title,
+        rec.date,
+        JSON.stringify(rec.projects),
+        rec.branch ?? null,
+        rec.status,
+        rec.type,
+        JSON.stringify(rec.topics),
+        JSON.stringify(rec.tags),
+        rec.last_updated,
+        JSON.stringify(rec.sdk_touched),
+        JSON.stringify(rec.apps_touched),
+        JSON.stringify(rec.commits),
+        JSON.stringify(rec.related_sessions),
+        JSON.stringify(rec.specs),
+        JSON.stringify(rec.content),
+        JSON.stringify(rec.observation_refs),
+        rec.generation_metadata ? JSON.stringify(rec.generation_metadata) : null,
+        new Date().toISOString(),
+        Date.now()
+      );
+    } finally {
+      adapter.close();
+    }
+  }
+
   printJson(result);
 }
 
 async function cmdExtractLearning(flags: ArgMap): Promise<void> {
   const topic = flags.get('topic');
-  const sourcesPath = flags.get('sources');
-  if (!topic || !sourcesPath) {
-    console.error(pc.red('usage: extract-learning --topic=T --sources=FILE.json'));
+  let sources: unknown;
+
+  if (flags.get('from-db') === 'true') {
+    // Phase 5 — pull lessons + arch_issue observations from SQLite directly.
+    const adapter = openAdapter(flags, { readonly: true });
+    try {
+      const obs = adapter.fetchObservations({ limit: 5000 });
+      sources = obs
+        .filter((o) => {
+          const dw = (o.metadata?.dev_workflow as Record<string, unknown> | undefined) ?? null;
+          if (!dw) return false;
+          const kind = dw.kind as string | undefined;
+          if (kind !== 'lesson' && kind !== 'architecture_issue') return false;
+          const topics = (dw.topics as string[] | undefined) ?? [];
+          return topic ? topics.includes(topic) : true;
+        })
+        .map((o) => {
+          const dw = (o.metadata?.dev_workflow as Record<string, unknown>) ?? {};
+          return {
+            id: String(o.id),
+            kind: dw.kind as 'lesson' | 'architecture_issue',
+            topic: topic as never,
+            appliesTo: (dw.applies_to as string[] | undefined) ?? [],
+            confidence: dw.confidence as 'confirmed' | 'hypothesis' | undefined,
+            archStatus: dw.status as never,
+            content:
+              (dw.lesson as string) ??
+              (dw.issue as string) ??
+              o.narrative ??
+              '(no content)',
+            evidence: (dw.evidence as string) ?? `obs ${o.id}`,
+            sessionId: o.memory_session_id
+          };
+        });
+    } finally {
+      adapter.close();
+    }
+  } else {
+    const sourcesPath = flags.get('sources');
+    if (!topic || !sourcesPath) {
+      console.error(pc.red('usage: extract-learning --topic=T (--sources=FILE.json | --from-db=true) [--persist=true]'));
+      process.exit(1);
+    }
+    sources = await readJsonFile(sourcesPath);
+  }
+
+  if (!topic) {
+    console.error(pc.red('--topic is required'));
     process.exit(1);
   }
-  const sources = await readJsonFile(sourcesPath);
+
   const llmCaller = pickLlmCaller();
   const extractor = new LearningExtractor(llmCaller, {
     minLessons: Number(flags.get('min-lessons') ?? 3)
@@ -247,6 +343,57 @@ async function cmdExtractLearning(flags: ArgMap): Promise<void> {
   const result = await extractor.extract(topic as never, sources as never, {
     id: (flags.get('id') ?? `learn-${Date.now()}`) as string
   });
+
+  // Phase 5 — persist into learning_records when --persist=true.
+  const shouldPersist = flags.get('persist') === 'true';
+  if (shouldPersist && result.record) {
+    const adapter = openAdapter(flags, { readonly: false });
+    try {
+      const rec = result.record;
+      const NodeSqlite = await import('node:sqlite');
+      const db = new (NodeSqlite as unknown as { DatabaseSync: new (p: string) => { prepare(sql: string): { run(...p: unknown[]): unknown } } }).DatabaseSync(adapter.dbPath);
+      const epoch = Date.now();
+      const createdAt = new Date(epoch).toISOString();
+      db.prepare(
+        `INSERT INTO learning_records (
+          id, topic, last_synthesized, applies_to, summary, content,
+          source_session_ids, source_lesson_ids, source_issue_ids,
+          confidence_distribution, generation_cost_usd, generation_input_tokens,
+          needs_review, created_at, created_at_epoch
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(topic) DO UPDATE SET
+          last_synthesized=excluded.last_synthesized,
+          applies_to=excluded.applies_to,
+          summary=excluded.summary,
+          content=excluded.content,
+          source_session_ids=excluded.source_session_ids,
+          source_lesson_ids=excluded.source_lesson_ids,
+          source_issue_ids=excluded.source_issue_ids,
+          confidence_distribution=excluded.confidence_distribution,
+          generation_cost_usd=excluded.generation_cost_usd,
+          needs_review=excluded.needs_review`
+      ).run(
+        rec.id,
+        rec.topic,
+        rec.last_synthesized,
+        JSON.stringify(rec.applies_to),
+        rec.summary,
+        JSON.stringify(rec.content),
+        JSON.stringify(rec.source_session_ids),
+        JSON.stringify(rec.source_lesson_ids),
+        JSON.stringify(rec.source_issue_ids),
+        JSON.stringify(rec.confidence_distribution),
+        rec.generation_cost_usd ?? null,
+        rec.generation_input_tokens ?? null,
+        rec.needs_review ? 1 : 0,
+        createdAt,
+        epoch
+      );
+    } finally {
+      adapter.close();
+    }
+  }
+
   printJson(result);
 }
 
@@ -274,6 +421,42 @@ async function cmdGoldenDoc(flags: ArgMap): Promise<void> {
     await fs.writeFile(outputPath, result.markdown, 'utf8');
     console.error(pc.green(`wrote ${outputPath}`));
   }
+
+  // Phase 6 — persist into golden_doc_sources when --persist=true.
+  if (flags.get('persist') === 'true') {
+    const adapter = openAdapter(flags, { readonly: false });
+    try {
+      const NodeSqlite = await import('node:sqlite');
+      const db = new (NodeSqlite as unknown as { DatabaseSync: new (p: string) => { prepare(sql: string): { run(...p: unknown[]): unknown } } }).DatabaseSync(adapter.dbPath);
+      db.prepare(
+        `INSERT INTO golden_doc_sources (
+          id, golden_doc_path, generated_at, source_learning_ids,
+          generation_prompt_hash, generation_cost_usd, human_reviewed,
+          reviewer, needs_review, last_review_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(golden_doc_path) DO UPDATE SET
+          generated_at=excluded.generated_at,
+          source_learning_ids=excluded.source_learning_ids,
+          generation_prompt_hash=excluded.generation_prompt_hash,
+          generation_cost_usd=excluded.generation_cost_usd,
+          needs_review=excluded.needs_review`
+      ).run(
+        result.source.id,
+        result.source.golden_doc_path,
+        result.source.generated_at,
+        JSON.stringify(result.source.source_learning_ids),
+        result.source.generation_prompt_hash,
+        result.source.generation_cost_usd ?? null,
+        result.source.human_reviewed ? 1 : 0,
+        result.source.reviewer ?? null,
+        result.source.needs_review ? 1 : 0,
+        result.source.last_review_at ?? null
+      );
+    } finally {
+      adapter.close();
+    }
+  }
+
   printJson({ markdown: result.markdown, source: result.source });
 }
 
@@ -544,6 +727,212 @@ function uniq<T>(items: readonly T[]): T[] {
   return Array.from(new Set(items));
 }
 
+/**
+ * Phase 4 migration importer — read existing _ai/sessions/*.md files,
+ * parse YAML frontmatter + sections, write into session_records table.
+ * Idempotent via INSERT ... ON CONFLICT(id).
+ */
+async function cmdMigrateSessions(flags: ArgMap): Promise<void> {
+  const fromDir = flags.get('from-dir');
+  if (!fromDir) {
+    console.error(pc.red('usage: migrate-sessions --from-dir=PATH [--limit=N] [--dry-run=true]'));
+    process.exit(1);
+  }
+  const dryRun = flags.get('dry-run') === 'true';
+  const limit = Number(flags.get('limit') ?? '500');
+
+  const files = (await fs.readdir(fromDir))
+    .filter((f) => f.endsWith('.md') && /^\d{4}-\d{2}-\d{2}/.test(f))
+    .slice(0, limit);
+
+  const report = { scanned: files.length, imported: 0, skipped: 0, errors: 0, files: [] as Array<{ name: string; status: string }> };
+  const adapter = openAdapter(flags, { readonly: dryRun });
+  let db: { prepare(sql: string): { run(...p: unknown[]): unknown } } | null = null;
+  if (!dryRun) {
+    const NodeSqlite = await import('node:sqlite');
+    db = new (NodeSqlite as unknown as { DatabaseSync: new (p: string) => typeof db }).DatabaseSync(adapter.dbPath) as never;
+  }
+
+  try {
+    for (const file of files) {
+      try {
+        const raw = await fs.readFile(`${fromDir}/${file}`, 'utf8');
+        const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+        if (!match) {
+          report.skipped++;
+          report.files.push({ name: file, status: 'no_frontmatter' });
+          continue;
+        }
+        const frontmatter = parseYamlLite(match[1]);
+        const body = match[2];
+        const id = `imported-${file.replace(/\.md$/, '')}`;
+        const date = (frontmatter.date as string) ?? file.slice(0, 10);
+        const memorySessionId = `imported-${id}`;
+        const projects = arrayOrEmpty(frontmatter.projects);
+        const topics = arrayOrEmpty(frontmatter.topics);
+        const tags = arrayOrEmpty(frontmatter.tags);
+        const status = (frontmatter.status as string) ?? 'completed';
+        const type = (frontmatter.type as string) ?? 'feature';
+        const title = (frontmatter.title as string) ?? file;
+
+        const content = {
+          objective: extractSection(body, 'Objective'),
+          sdk_notes: {},
+          architecture_issues: [],
+          context_documents: [],
+          lessons_learned: [],
+          user_steering: [],
+          next_steps: extractListSection(body, 'Next Steps'),
+          updates: [],
+          imported_raw_markdown: body.slice(0, 8000)
+        };
+
+        if (!dryRun && db) {
+          db.prepare(
+            `INSERT INTO session_records (
+              id, memory_session_id, title, date, projects, branch, status, type,
+              topics, tags, last_updated, sdk_touched, apps_touched, commits,
+              related_sessions, specs, content, observation_refs, generation_metadata,
+              created_at, created_at_epoch
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING`
+          ).run(
+            id,
+            memorySessionId,
+            title,
+            date,
+            JSON.stringify(projects),
+            (frontmatter.branch as string) ?? null,
+            status,
+            type,
+            JSON.stringify(topics),
+            JSON.stringify(tags),
+            (frontmatter.last_updated as string) ?? new Date().toISOString(),
+            JSON.stringify(arrayOrEmpty(frontmatter.sdk_touched)),
+            JSON.stringify(arrayOrEmpty(frontmatter.apps_touched)),
+            JSON.stringify(arrayOrEmpty(frontmatter.commits)),
+            JSON.stringify(arrayOrEmpty(frontmatter.related_sessions)),
+            JSON.stringify(arrayOrEmpty(frontmatter.specs)),
+            JSON.stringify(content),
+            JSON.stringify([]),
+            JSON.stringify({ source: 'session-md-importer', original_file: file }),
+            new Date().toISOString(),
+            Date.now()
+          );
+        }
+        report.imported++;
+        report.files.push({ name: file, status: dryRun ? 'preview' : 'imported' });
+      } catch (err) {
+        report.errors++;
+        report.files.push({ name: file, status: `error: ${(err as Error).message?.slice(0, 100)}` });
+      }
+    }
+  } finally {
+    adapter.close();
+  }
+
+  printJson(report);
+}
+
+function parseYamlLite(yaml: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const lines = yaml.split('\n');
+  let key: string | null = null;
+  for (const line of lines) {
+    if (line.match(/^\s*-\s/) && key) {
+      const arr = (out[key] as unknown[]) ?? [];
+      arr.push(line.replace(/^\s*-\s*/, '').trim());
+      out[key] = arr;
+      continue;
+    }
+    const m = line.match(/^([a-z_]+):\s*(.*)$/i);
+    if (!m) continue;
+    key = m[1];
+    let val: string = m[2].trim();
+    if (val === '') {
+      out[key] = [];
+      continue;
+    }
+    if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+    if (val.startsWith('[') && val.endsWith(']')) {
+      out[key] = val
+        .slice(1, -1)
+        .split(',')
+        .map((s) => s.trim().replace(/^["']|["']$/g, ''))
+        .filter(Boolean);
+      continue;
+    }
+    out[key] = val;
+  }
+  return out;
+}
+
+function arrayOrEmpty(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map(String);
+  if (typeof v === 'string' && v.length) return [v];
+  return [];
+}
+
+function extractSection(body: string, header: string): string {
+  const re = new RegExp(`^##\\s+${header}\\s*$([\\s\\S]*?)(?=^##\\s)`, 'm');
+  const m = body.match(re);
+  return m ? m[1].trim().slice(0, 4000) : '';
+}
+
+function extractListSection(body: string, header: string): string[] {
+  const section = extractSection(body, header);
+  if (!section) return [];
+  return section
+    .split('\n')
+    .filter((l) => /^\s*[-*0-9.]\s/.test(l))
+    .map((l) => l.replace(/^\s*[-*0-9.]\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 30);
+}
+
+/**
+ * Phase 5 — list topics with enough lessons in DB to be candidates for
+ * learning extraction. Used by the pilot script + drift detection.
+ */
+async function cmdTopicsReady(flags: ArgMap): Promise<void> {
+  const minLessons = Number(flags.get('min-lessons') ?? '3');
+  const adapter = openAdapter(flags, { readonly: true });
+  try {
+    const obs = adapter.fetchObservations({ limit: 10000 });
+    const counts: Record<string, { lesson: number; arch: number; sessions: Set<string> }> = {};
+    for (const o of obs) {
+      const dw = (o.metadata?.dev_workflow as Record<string, unknown> | undefined) ?? null;
+      if (!dw) continue;
+      const kind = dw.kind as string | undefined;
+      if (kind !== 'lesson' && kind !== 'architecture_issue') continue;
+      const topics = (dw.topics as string[] | undefined) ?? [];
+      for (const t of topics) {
+        if (!counts[t]) counts[t] = { lesson: 0, arch: 0, sessions: new Set() };
+        if (kind === 'lesson') counts[t].lesson++;
+        else counts[t].arch++;
+        counts[t].sessions.add(o.memory_session_id);
+      }
+    }
+    const ready = Object.entries(counts)
+      .filter(([, c]) => c.lesson >= minLessons)
+      .map(([topic, c]) => ({
+        topic,
+        lessons: c.lesson,
+        architecture_issues: c.arch,
+        sessions: c.sessions.size
+      }))
+      .sort((a, b) => b.lessons - a.lessons);
+    printJson({ ready, min_lessons: minLessons });
+  } finally {
+    adapter.close();
+  }
+}
+
+/**
+ * Phase 6 helper — write golden doc draft to disk + provenance row.
+ * Builds on cmdGoldenDoc but also persists golden_doc_sources.
+ */
+
 async function cmdInferSession(flags: ArgMap): Promise<void> {
   const sessionId = flags.get('session-id');
   if (!sessionId) {
@@ -676,6 +1065,12 @@ export async function runDevWorkflowCommand(args: readonly string[]): Promise<vo
       return;
     case 'infer-session':
       await cmdInferSession(flags);
+      return;
+    case 'migrate-sessions':
+      await cmdMigrateSessions(flags);
+      return;
+    case 'topics-ready':
+      await cmdTopicsReady(flags);
       return;
     default:
       console.error(pc.red(`unknown dev-workflow subcommand: ${subcommand}`));

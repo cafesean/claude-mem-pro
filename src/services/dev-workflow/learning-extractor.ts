@@ -171,7 +171,8 @@ export class LearningExtractor {
     }
 
     const summary = typeof raw.summary === 'string' ? raw.summary : '';
-    const contentResult = LearningContentSchema.safeParse(raw);
+    const normalised = normaliseLearningContent(raw);
+    const contentResult = LearningContentSchema.safeParse(normalised);
     if (!contentResult.success) {
       if (this.failOpen) {
         return { record: null, llm: response, validationError: contentResult.error };
@@ -245,6 +246,121 @@ export class LearningDriftDetector {
     const ageDays = (Date.now() - lastDate) / (24 * 60 * 60 * 1000);
     return ageDays > this.staleAfterDays;
   }
+}
+
+/**
+ * Coerce sonnet's natural shapes into the strict LearningContent shape.
+ * Common drift:
+ *   patterns[].name  → patterns[].pattern
+ *   patterns[].condition / when_to_use → when_to_apply
+ *   anti_patterns[].name → anti_pattern
+ *   anti_patterns[].why → why_avoid
+ *   open_issues[].id → observationId
+ *   missing rules_of_thumb → []
+ */
+function normaliseLearningContent(raw: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...raw };
+
+  if (Array.isArray(out.patterns)) {
+    out.patterns = (out.patterns as Array<Record<string, unknown>>).map((p) => {
+      const pattern =
+        (p.pattern as string | undefined) ??
+        (p.name as string | undefined) ??
+        (p.title as string | undefined) ??
+        (p.description as string | undefined) ??
+        'unnamed pattern';
+      const when_to_apply =
+        (p.when_to_apply as string | undefined) ??
+        (p.when_to_use as string | undefined) ??
+        (p.condition as string | undefined) ??
+        (p.applicability as string | undefined) ??
+        (p.description as string | undefined) ??
+        '(unspecified)';
+      const evidence_refs = Array.isArray(p.evidence_refs)
+        ? (p.evidence_refs as unknown[]).map(String)
+        : Array.isArray(p.evidence)
+        ? (p.evidence as unknown[]).map(String)
+        : [];
+      return { pattern, when_to_apply, evidence_refs };
+    });
+  } else {
+    out.patterns = [];
+  }
+
+  if (Array.isArray(out.anti_patterns)) {
+    out.anti_patterns = (out.anti_patterns as Array<Record<string, unknown>>).map((p) => {
+      const anti_pattern =
+        (p.anti_pattern as string | undefined) ??
+        (p.name as string | undefined) ??
+        (p.title as string | undefined) ??
+        (p.description as string | undefined) ??
+        'unnamed anti-pattern';
+      const why_avoid =
+        (p.why_avoid as string | undefined) ??
+        (p.why as string | undefined) ??
+        (p.reason as string | undefined) ??
+        (p.description as string | undefined) ??
+        '(unspecified)';
+      const evidence_refs = Array.isArray(p.evidence_refs)
+        ? (p.evidence_refs as unknown[]).map(String)
+        : Array.isArray(p.evidence)
+        ? (p.evidence as unknown[]).map(String)
+        : [];
+      return { anti_pattern, why_avoid, evidence_refs };
+    });
+  } else {
+    out.anti_patterns = [];
+  }
+
+  if (Array.isArray(out.open_issues)) {
+    out.open_issues = (out.open_issues as Array<Record<string, unknown>>).map((i) => {
+      const observationId =
+        (i.observationId as string | undefined) ??
+        (i.id as string | undefined) ??
+        'unknown';
+      return {
+        observationId: String(observationId),
+        summary:
+          (i.summary as string | undefined) ??
+          (i.description as string | undefined) ??
+          (i.issue as string | undefined) ??
+          'unspecified',
+        status: (i.status as string | undefined) ?? 'unresolved'
+      };
+    });
+  } else {
+    out.open_issues = [];
+  }
+
+  if (Array.isArray(out.cross_app_inconsistencies)) {
+    out.cross_app_inconsistencies = (out.cross_app_inconsistencies as Array<Record<string, unknown>>)
+      .map((c) => ({
+        description:
+          (c.description as string | undefined) ??
+          (c.summary as string | undefined) ??
+          'unspecified',
+        apps_involved: Array.isArray(c.apps_involved)
+          ? (c.apps_involved as unknown[]).map(String).filter(Boolean)
+          : Array.isArray(c.apps)
+          ? (c.apps as unknown[]).map(String).filter(Boolean)
+          : Array.isArray(c.affected_apps)
+          ? (c.affected_apps as unknown[]).map(String).filter(Boolean)
+          : []
+      }))
+      // Drop entries that don't meet the ≥2 apps requirement instead of
+      // padding with sentinels that pollute downstream queries.
+      .filter((c) => c.apps_involved.length >= 2);
+  } else {
+    out.cross_app_inconsistencies = [];
+  }
+
+  if (Array.isArray(out.rules_of_thumb)) {
+    out.rules_of_thumb = (out.rules_of_thumb as unknown[]).map(String).filter(Boolean);
+  } else {
+    out.rules_of_thumb = [];
+  }
+
+  return out;
 }
 
 export { SYSTEM_PROMPT, LEARNING_RESPONSE_SCHEMA, buildUserPrompt };
