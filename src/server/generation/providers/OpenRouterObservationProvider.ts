@@ -49,7 +49,7 @@ export class OpenRouterObservationProvider implements ServerGenerationProvider {
     this.apiKey = options.apiKey;
     this.model = options.model ?? DEFAULT_MODEL;
     this.maxOutputTokens = options.maxOutputTokens ?? 4096;
-    this.siteUrl = options.siteUrl ?? 'https://github.com/thedotmack/claude-mem';
+    this.siteUrl = options.siteUrl ?? 'https://github.com/cafesean/claude-mem';
     this.appName = options.appName ?? 'claude-mem';
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
