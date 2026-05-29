@@ -2611,6 +2611,77 @@ export class SessionStore {
     return { imported: true, id: result.lastInsertRowid as number };
   }
 
+  /**
+   * Phase 1.6 live-enrichment helpers (read + write metadata.dev_workflow).
+   * Used by src/services/worker/dev-workflow-enricher.ts immediately after
+   * storeObservations() returns. Pure SQLite operations — no LLM logic here.
+   */
+  fetchObservationForEnrichment(id: number): {
+    type: string;
+    title: string | null;
+    subtitle: string | null;
+    narrative: string | null;
+    facts: string[];
+    files_read: string[];
+    files_modified: string[];
+    agent_type: string | null;
+  } | null {
+    const row = this.db.prepare(
+      'SELECT type, title, subtitle, narrative, facts, files_read, files_modified, agent_type FROM observations WHERE id = ?'
+    ).get(id) as
+      | {
+          type: string;
+          title: string | null;
+          subtitle: string | null;
+          narrative: string | null;
+          facts: string | null;
+          files_read: string | null;
+          files_modified: string | null;
+          agent_type: string | null;
+        }
+      | undefined;
+    if (!row) return null;
+    const parseArr = (raw: string | null): string[] => {
+      if (!raw) return [];
+      try {
+        const v = JSON.parse(raw);
+        return Array.isArray(v) ? v : [];
+      } catch {
+        return [];
+      }
+    };
+    return {
+      type: row.type,
+      title: row.title,
+      subtitle: row.subtitle,
+      narrative: row.narrative,
+      facts: parseArr(row.facts),
+      files_read: parseArr(row.files_read),
+      files_modified: parseArr(row.files_modified),
+      agent_type: row.agent_type
+    };
+  }
+
+  updateObservationDevWorkflowMetadata(id: number, payload: unknown): void {
+    const existing = this.db.prepare('SELECT metadata FROM observations WHERE id = ?').get(id) as
+      | { metadata: string | null }
+      | undefined;
+    if (!existing) return;
+    let base: Record<string, unknown> = {};
+    if (existing.metadata) {
+      try {
+        const parsed = JSON.parse(existing.metadata);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          base = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // ignore; overwrite with fresh
+      }
+    }
+    const merged = { ...base, dev_workflow: payload };
+    this.db.prepare('UPDATE observations SET metadata = ? WHERE id = ?').run(JSON.stringify(merged), id);
+  }
+
   rebuildObservationsFTSIndex(): void {
     const hasFTS = (this.db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='observations_fts'"

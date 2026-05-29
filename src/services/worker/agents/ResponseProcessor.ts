@@ -13,6 +13,11 @@ import type { DatabaseManager } from '../DatabaseManager.js';
 import type { SessionManager } from '../SessionManager.js';
 import type { WorkerRef, StorageResult } from './types.js';
 import { broadcastObservation, broadcastSummary } from './ObservationBroadcaster.js';
+import {
+  enrichJustStoredObservations,
+  isLiveEnrichEnabled,
+  isSyncEnrichEnabled
+} from '../dev-workflow-enricher.js';
 
 export async function processAgentResponse(
   text: string,
@@ -95,6 +100,25 @@ export async function processAgentResponse(
     sessionId: session.sessionDbId,
     memorySessionId: session.memorySessionId
   });
+
+  // Phase 1.6 live dev_workflow enrichment — gated behind
+  // CLAUDE_MEM_DW_LIVE_ENRICH=1. Adds metadata.dev_workflow payload to
+  // each just-stored observation. Sync vs fire-and-forget controlled by
+  // CLAUDE_MEM_DW_LIVE_ENRICH_SYNC=1. No-op when flag absent.
+  if (isLiveEnrichEnabled() && result.observationIds.length > 0) {
+    const sync = isSyncEnrichEnabled();
+    const enrichTask = enrichJustStoredObservations(sessionStore, result.observationIds).catch(
+      (err) => {
+        logger.warn('DW', `live-enrich threw: ${(err as Error).message?.slice(0, 200)}`);
+      }
+    );
+    if (sync) {
+      await enrichTask;
+    } else {
+      // Fire-and-forget; do NOT await so the worker reply latency stays flat.
+      void enrichTask;
+    }
+  }
 
   session.lastSummaryStored = result.summaryId !== null;
 
