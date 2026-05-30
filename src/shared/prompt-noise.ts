@@ -4,17 +4,16 @@
  *
  * Single source of truth for "is this user prompt trivial filler" used to keep
  * keep-alive / chit-chat prompts (e.g. "noop", "say hi", "continue", empty
- * prompts) out of the memory pipeline:
- *   - capture-side: skip persisting the prompt entirely (no row, no summary
- *     LLM call, no context line) — see worker handleSessionInit.
- *   - render-side: defensive filter so legacy noise rows already in the DB
- *     don't surface in the injected recent-context block.
+ * prompts) out of the memory pipeline.
  *
- * The LLM topic-relevance judge (PromptRelevanceJudge) handles the harder
- * "captured but not substantive" case; this util only catches the obvious,
- * exact-match filler so it never costs an LLM call or a DB row.
+ * Primary use: the worker's PrivacyCheckValidator.checkUserPromptPrivacy gate.
+ * When a turn's prompt is obvious filler the validator returns null, so neither
+ * summary generation nor observation generation is queued for that turn — no
+ * SDK/LLM inference call is spent and no hollow "User requested noop /
+ * learned: None" summary row is ever created.
  *
- * correction-detector imports FILLER_ONLY_PATTERNS from here so the filler
+ * Zero-cost and deterministic: exact-anchored regex only, no LLM call.
+ * correction-detector also imports FILLER_ONLY_PATTERNS from here so the filler
  * vocabulary lives in exactly one place.
  */
 
@@ -38,7 +37,7 @@ export const MEDIA_PROMPT = '[media prompt]';
  * at capture time with zero LLM cost.
  *
  * Media-only prompts (`[media prompt]`) are intentionally NOT treated as
- * filler: an attached image may be meaningful, so it is left for the LLM judge.
+ * filler: an attached image may be meaningful, so the turn is still summarized.
  */
 export function isObviousFiller(text: string | null | undefined): boolean {
   if (!text) return true;
