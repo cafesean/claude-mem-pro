@@ -97,10 +97,21 @@ export class MutationStore {
   }
 }
 
-/** Pull the mutation verb out of a tool name / command for the `verb` column. */
+const VERB_SET = new Set([
+  'commit', 'push', 'tag', 'merge', 'update', 'create', 'write', 'edit',
+  'delete', 'remove', 'insert', 'patch', 'put', 'post', 'send', 'publish',
+  'upsert', 'add', 'set', 'move', 'rename',
+]);
+
+/**
+ * Pull the mutation verb out of a tool name / command for the `verb` column.
+ * Splits on any non-letter (so `__`, `-`, spaces all delimit) and returns the
+ * first token that is a known verb. e.g. `mcp__notion__update-page` → "update".
+ */
 export function extractVerb(toolName: string, command?: string | null): string | null {
-  const m = `${toolName} ${command ?? ''}`.match(
-    /\b(commit|push|tag|merge|update|create|write|edit|delete|remove|insert|patch|put|post|send|publish|upsert|add|set|move|rename)\b/i,
-  );
-  return m ? m[1].toLowerCase() : null;
+  const tokens = `${toolName} ${command ?? ''}`.toLowerCase().split(/[^a-z]+/);
+  for (const t of tokens) {
+    if (VERB_SET.has(t)) return t;
+  }
+  return null;
 }

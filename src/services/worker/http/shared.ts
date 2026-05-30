@@ -154,7 +154,7 @@ export async function ingestObservation(payload: ObservationPayload): Promise<In
   if (envBool('CLAUDE_MEM_CAPTURE_MUTATIONS', true)) {
     try {
       const decision = classifyToolCall(
-        { toolName, input: (payload.toolInput ?? null) as Record<string, unknown> | null },
+        { toolName: payload.toolName, input: (payload.toolInput ?? null) as Record<string, unknown> | null },
         {
           include: splitPatterns(process.env.CLAUDE_MEM_MUTATION_INCLUDE),
           exclude: splitPatterns(process.env.CLAUDE_MEM_MUTATION_EXCLUDE),
@@ -164,9 +164,9 @@ export async function ingestObservation(payload: ObservationPayload): Promise<In
         const target = mutationTarget(payload.toolInput);
         const mutations = new MutationStore(store.db as never);
         mutations.insert({
-          toolName,
+          toolName: payload.toolName,
           target,
-          verb: extractVerb(toolName, typeof target === 'string' ? target : null),
+          verb: extractVerb(payload.toolName, typeof target === 'string' ? target : null),
           project,
           contentSessionId: payload.contentSessionId,
           detail: payload.toolInput !== undefined
@@ -174,10 +174,10 @@ export async function ingestObservation(payload: ObservationPayload): Promise<In
             : null,
           createdAtEpoch: Date.now(),
         });
-        logger.debug('MUTATION', 'Captured mutation', { toolName, target, project });
+        logger.debug('INGEST', 'Captured mutation', { toolName: payload.toolName, target, project });
       }
     } catch (err) {
-      logger.warn('MUTATION', `mutation capture failed: ${(err as Error).message?.slice(0, 200)}`);
+      logger.warn('INGEST', `mutation capture failed: ${(err as Error).message?.slice(0, 200)}`);
     }
   }
 

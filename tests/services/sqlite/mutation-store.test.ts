@@ -48,7 +48,11 @@ describe('extractVerb', () => {
     expect(extractVerb('mcp__notion__update-page')).toBe('update');
     expect(extractVerb('mcp__jira__create_issue')).toBe('create');
   });
-  it('returns null when no verb', () => {
-    expect(extractVerb('Write')).toBe(null);
+  it('extracts write verb from the Write tool name', () => {
+    expect(extractVerb('Write')).toBe('write');
+  });
+  it('returns null when no verb present', () => {
+    expect(extractVerb('Read')).toBe(null);
+    expect(extractVerb('mcp__foo__bar')).toBe(null);
   });
 });
