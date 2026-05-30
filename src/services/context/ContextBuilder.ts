@@ -19,6 +19,7 @@ import {
   buildTimeline,
   getFullObservationIds,
 } from './ObservationCompiler.js';
+import { renderMutationDigest } from './MutationDigest.js';
 import { renderHeader } from './sections/HeaderRenderer.js';
 import { renderTimeline } from './sections/TimelineRenderer.js';
 import { shouldShowSummary, renderSummaryFields } from './sections/SummaryRenderer.js';
@@ -61,6 +62,11 @@ function renderEmptyState(project: string, forHuman: boolean): string {
   return forHuman ? renderHumanEmptyState(project) : renderAgentEmptyState(project);
 }
 
+/** Injection mode: 'mutations' (new default — clean digest) | 'legacy' (old obs/summary index). */
+function injectMode(): 'mutations' | 'legacy' {
+  return process.env.CLAUDE_MEM_INJECT_MODE === 'legacy' ? 'legacy' : 'mutations';
+}
+
 function buildContextOutput(
   project: string,
   observations: Observation[],
@@ -68,14 +74,30 @@ function buildContextOutput(
   config: ContextConfig,
   cwd: string,
   sessionId: string | undefined,
-  forHuman: boolean
+  forHuman: boolean,
+  db: SessionStore,
+  projects: string[]
 ): string {
   const output: string[] = [];
-
   const economics = calculateTokenEconomics(observations);
-
   output.push(...renderHeader(project, economics, config, forHuman));
 
+  if (injectMode() === 'mutations') {
+    // New injection: clean digest of durable mutations + a recall pointer.
+    // Skips the noisy observation/summary index entirely.
+    const digest = renderMutationDigest(db.db as never, projects);
+    if (digest.length > 0) {
+      output.push(...digest);
+    } else {
+      output.push('_No durable changes recorded yet for this project._', '');
+    }
+    output.push(
+      'For deeper recall (past decisions, lessons, specs, session history), use the `recall` skill or `mem-search`.',
+    );
+    return output.join('\n').trimEnd();
+  }
+
+  // Legacy injection (CLAUDE_MEM_INJECT_MODE=legacy).
   const displaySummaries = summaries.slice(0, config.sessionCount);
   const summariesForTimeline = prepareSummariesForTimeline(displaySummaries, summaries);
   const timeline = buildTimeline(observations, summariesForTimeline);
@@ -127,7 +149,10 @@ export async function generateContext(
       ? querySummariesMulti(db, projects, config)
       : querySummaries(db, project, config);
 
-    if (observations.length === 0 && summaries.length === 0) {
+    // In mutations mode the digest comes from the mutations table, so don't
+    // short-circuit on empty observations/summaries — there may still be
+    // mutations to show. Only empty-state when legacy mode has nothing.
+    if (injectMode() === 'legacy' && observations.length === 0 && summaries.length === 0) {
       return renderEmptyState(project, forHuman);
     }
 
@@ -138,7 +163,9 @@ export async function generateContext(
       config,
       cwd,
       input?.session_id,
-      forHuman
+      forHuman,
+      db,
+      projects
     );
 
     return output;
