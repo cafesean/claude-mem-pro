@@ -120,21 +120,29 @@ function main(): void {
       return;
     }
 
-    // Backup before any destructive op.
-    const backup = `${dbPath}.pre-noise-purge-${Math.floor(db.prepare('SELECT strftime(\'%s\',\'now\') AS count').get() as unknown as number)}.bak`;
+    // Backup before any destructive op. (strftime via .get() returns an object,
+    // not a number — read the aliased column explicitly to avoid a NaN filename.)
+    const tsRow = db.prepare("SELECT strftime('%s','now') AS ts").get() as { ts: string };
+    const backup = `${dbPath}.pre-noise-purge-${tsRow.ts}.bak`;
     copyFileSync(dbPath, backup);
     console.log(`Backup written: ${backup}`);
 
+    // Count deletions from the planned set, NOT from .changes — bun:sqlite's
+    // .changes can report cumulative changes-since-connection, which over-counts
+    // when accumulated in a loop. We already know exactly what we're deleting.
+    const delSummariesPlanned = noiseSummaries;
+    const delPromptsPlanned = noisePromptIds.length;
+
     const tx = db.transaction(() => {
-      const delSummaries = db.prepare(`DELETE FROM session_summaries WHERE ${NOISE_PREDICATE}`).run();
-      let delPrompts = 0;
+      db.prepare(`DELETE FROM session_summaries WHERE ${NOISE_PREDICATE}`).run();
       if (noisePromptIds.length > 0) {
         const stmt = db.prepare('DELETE FROM user_prompts WHERE id = ?');
-        for (const id of noisePromptIds) delPrompts += stmt.run(id).changes;
+        for (const id of noisePromptIds) stmt.run(id);
       }
-      return { delSummaries: delSummaries.changes, delPrompts };
     });
-    const { delSummaries, delPrompts } = tx();
+    tx();
+    const delSummaries = delSummariesPlanned;
+    const delPrompts = delPromptsPlanned;
 
     console.log('');
     console.log(`Deleted ${delSummaries} session_summaries (FTS kept in sync via AFTER DELETE trigger).`);
