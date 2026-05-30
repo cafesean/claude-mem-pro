@@ -23,8 +23,10 @@ interface DbLike {
 /** Shorten a target path/string for one-line display. */
 function shortTarget(target: string | null): string {
   if (!target) return '';
+  // collapse to first line (defensive: never let a multi-line target in)
+  let t = target.split('\n')[0];
   // strip noisy absolute prefixes; keep the meaningful tail
-  let t = target
+  t = t
     .replace(/^\/Volumes\/[^/]+\/code\/(monorepo|ai)\//, '')
     .replace(/^.*\/\.claude\/plugins\/[^/]+\//, '')
     .replace(/^\/Volumes\/HD\/code\//, '');

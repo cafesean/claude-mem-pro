@@ -31,7 +31,16 @@ function mutationTarget(input: unknown): string | null {
   const o = input as Record<string, unknown>;
   const p = o.file_path ?? o.path ?? o.notebook_path;
   if (typeof p === 'string') return p;
-  if (typeof o.command === 'string') return o.command.slice(0, 200);
+  if (typeof o.command === 'string') {
+    const cmd = o.command;
+    // For git commits, capture the message SUBJECT only (first -m value, first
+    // line) — not the whole multi-line command, which pollutes the digest.
+    const m = cmd.match(/git\s+commit\b[^]*?-m\s+(["'])([^]*?)\1/);
+    if (m) return m[2].split('\n')[0].slice(0, 120);
+    const verb = cmd.match(/\bgit\s+(push|tag|merge)\b/);
+    if (verb) return `git ${verb[1]}`;
+    return cmd.split('\n')[0].slice(0, 120);
+  }
   return null;
 }
 import { EventEmitter } from 'events';

@@ -79,12 +79,12 @@ function buildContextOutput(
   projects: string[]
 ): string {
   const output: string[] = [];
-  const economics = calculateTokenEconomics(observations);
-  output.push(...renderHeader(project, economics, config, forHuman));
 
   if (injectMode() === 'mutations') {
-    // New injection: clean digest of durable mutations + a recall pointer.
-    // Skips the noisy observation/summary index entirely.
+    // New injection: minimal header + clean digest of durable mutations +
+    // a recall pointer. Skips the noisy observation/summary index AND the
+    // legacy token-economics header (meaningless for the digest).
+    output.push(`# [${project}] recent context, ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`, '');
     const digest = renderMutationDigest(db.db as never, projects);
     if (digest.length > 0) {
       output.push(...digest);
@@ -98,6 +98,8 @@ function buildContextOutput(
   }
 
   // Legacy injection (CLAUDE_MEM_INJECT_MODE=legacy).
+  const economics = calculateTokenEconomics(observations);
+  output.push(...renderHeader(project, economics, config, forHuman));
   const displaySummaries = summaries.slice(0, config.sessionCount);
   const summariesForTimeline = prepareSummariesForTimeline(displaySummaries, summaries);
   const timeline = buildTimeline(observations, summariesForTimeline);
