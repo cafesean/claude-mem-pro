@@ -1003,7 +1003,7 @@ function checkMarketplaceMarker(): void {
     if (!present && cachePresent) {
       logger.error(
         'SYSTEM',
-        'claude-mem MCP started but no marketplace directory was found at ~/.claude/plugins/marketplaces/cafesean or the XDG equivalent. The IDE plugin loader needs that directory to fire claude-mem hooks (SessionStart, PostToolUse, Stop, etc.). Without it, MCP search will work but no new memories will be captured. To self-heal, run: node ~/.claude/plugins/cache/cafesean/claude-mem/*/scripts/smart-install.js (or reinstall the plugin from the marketplace).',
+        'claude-mem MCP started but no marketplace directory was found at ~/.claude/plugins/marketplaces/cafesean or the XDG equivalent. The IDE plugin loader needs that directory to fire claude-mem hooks (SessionStart, PostToolUse, Stop, etc.). Without it, MCP search will work but no new memories will be captured. To self-heal, run: node ~/.claude/plugins/cache/cafesean/mem-pro/*/scripts/smart-install.js (or reinstall the plugin from the marketplace).',
         { marketplaceCandidates, cacheRoot }
       );
     }

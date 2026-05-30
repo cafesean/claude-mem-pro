@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
-const PLUGIN_SETTINGS_KEY = 'claude-mem@cafesean';
+const PLUGIN_SETTINGS_KEY = 'mem-pro@cafesean';
 
 export function isPluginDisabledInClaudeSettings(): boolean {
   try {

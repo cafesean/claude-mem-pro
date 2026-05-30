@@ -113,7 +113,7 @@ function registerPlugin(version: string): void {
   const cachePath = pluginCacheDirectory(version);
   const now = new Date().toISOString();
 
-  installedPlugins.plugins['claude-mem@cafesean'] = [
+  installedPlugins.plugins['mem-pro@cafesean'] = [
     {
       scope: 'user',
       installPath: cachePath,
@@ -130,7 +130,7 @@ function enablePluginInClaudeSettings(): void {
   const settings = readJsonSafe<Record<string, any>>(claudeSettingsPath(), {});
 
   if (!settings.enabledPlugins) settings.enabledPlugins = {};
-  settings.enabledPlugins['claude-mem@cafesean'] = true;
+  settings.enabledPlugins['mem-pro@cafesean'] = true;
 
   writeJsonFileAtomic(claudeSettingsPath(), settings);
 }
