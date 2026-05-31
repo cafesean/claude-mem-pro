@@ -2611,6 +2611,303 @@ export class SessionStore {
     return { imported: true, id: result.lastInsertRowid as number };
   }
 
+  /**
+   * Phase 1.6 live-enrichment helpers (read + write metadata.dev_workflow).
+   * Used by src/services/worker/dev-workflow-enricher.ts immediately after
+   * storeObservations() returns. Pure SQLite operations — no LLM logic here.
+   */
+  fetchObservationForEnrichment(id: number): {
+    type: string;
+    title: string | null;
+    subtitle: string | null;
+    narrative: string | null;
+    facts: string[];
+    files_read: string[];
+    files_modified: string[];
+    agent_type: string | null;
+  } | null {
+    const row = this.db.prepare(
+      'SELECT type, title, subtitle, narrative, facts, files_read, files_modified, agent_type FROM observations WHERE id = ?'
+    ).get(id) as
+      | {
+          type: string;
+          title: string | null;
+          subtitle: string | null;
+          narrative: string | null;
+          facts: string | null;
+          files_read: string | null;
+          files_modified: string | null;
+          agent_type: string | null;
+        }
+      | undefined;
+    if (!row) return null;
+    const parseArr = (raw: string | null): string[] => {
+      if (!raw) return [];
+      try {
+        const v = JSON.parse(raw);
+        return Array.isArray(v) ? v : [];
+      } catch {
+        return [];
+      }
+    };
+    return {
+      type: row.type,
+      title: row.title,
+      subtitle: row.subtitle,
+      narrative: row.narrative,
+      facts: parseArr(row.facts),
+      files_read: parseArr(row.files_read),
+      files_modified: parseArr(row.files_modified),
+      agent_type: row.agent_type
+    };
+  }
+
+  updateObservationDevWorkflowMetadata(id: number, payload: unknown): void {
+    const existing = this.db.prepare('SELECT metadata FROM observations WHERE id = ?').get(id) as
+      | { metadata: string | null }
+      | undefined;
+    if (!existing) return;
+    let base: Record<string, unknown> = {};
+    if (existing.metadata) {
+      try {
+        const parsed = JSON.parse(existing.metadata);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          base = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // ignore; overwrite with fresh
+      }
+    }
+    const merged = { ...base, dev_workflow: payload };
+    this.db.prepare('UPDATE observations SET metadata = ? WHERE id = ?').run(JSON.stringify(merged), id);
+  }
+
+  /**
+   * Phase 4 — persist a SessionRecord. Stores all fields including nested
+   * content as JSON. UPSERTs on id so re-synthesis overwrites.
+   */
+  upsertSessionRecord(record: {
+    id: string;
+    memory_session_id: string;
+    title: string;
+    date: string;
+    projects: string[];
+    branch?: string;
+    status: string;
+    type: string;
+    topics: string[];
+    tags: string[];
+    last_updated: string;
+    sdk_touched: string[];
+    apps_touched: string[];
+    commits: string[];
+    related_sessions: string[];
+    specs: string[];
+    content: unknown;
+    observation_refs: string[];
+    generation_metadata?: unknown;
+  }): void {
+    const epoch = Date.now();
+    const createdAt = new Date(epoch).toISOString();
+    this.db.prepare(
+      `INSERT INTO session_records (
+        id, memory_session_id, title, date, projects, branch, status, type,
+        topics, tags, last_updated, sdk_touched, apps_touched, commits,
+        related_sessions, specs, content, observation_refs, generation_metadata,
+        created_at, created_at_epoch
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title=excluded.title, status=excluded.status, last_updated=excluded.last_updated,
+        topics=excluded.topics, tags=excluded.tags, commits=excluded.commits,
+        content=excluded.content, observation_refs=excluded.observation_refs,
+        generation_metadata=excluded.generation_metadata`
+    ).run(
+      record.id,
+      record.memory_session_id,
+      record.title,
+      record.date,
+      JSON.stringify(record.projects),
+      record.branch ?? null,
+      record.status,
+      record.type,
+      JSON.stringify(record.topics),
+      JSON.stringify(record.tags),
+      record.last_updated,
+      JSON.stringify(record.sdk_touched),
+      JSON.stringify(record.apps_touched),
+      JSON.stringify(record.commits),
+      JSON.stringify(record.related_sessions),
+      JSON.stringify(record.specs),
+      JSON.stringify(record.content),
+      JSON.stringify(record.observation_refs),
+      record.generation_metadata ? JSON.stringify(record.generation_metadata) : null,
+      createdAt,
+      epoch
+    );
+  }
+
+  /** Phase 4 — list recent session_records. */
+  listSessionRecords(limit = 50): Array<{
+    id: string;
+    memory_session_id: string;
+    title: string;
+    date: string;
+    status: string;
+    topics: string[];
+  }> {
+    const rows = this.db
+      .prepare(
+        'SELECT id, memory_session_id, title, date, status, topics FROM session_records ORDER BY created_at_epoch DESC LIMIT ?'
+      )
+      .all(limit) as Array<{
+      id: string;
+      memory_session_id: string;
+      title: string;
+      date: string;
+      status: string;
+      topics: string;
+    }>;
+    return rows.map((r) => ({
+      ...r,
+      topics: r.topics ? (JSON.parse(r.topics) as string[]) : []
+    }));
+  }
+
+  /**
+   * Phase 5 — upsert a LearningRecord keyed by topic.
+   */
+  upsertLearningRecord(record: {
+    id: string;
+    topic: string;
+    last_synthesized: string;
+    applies_to: string[];
+    summary: string;
+    content: unknown;
+    source_session_ids: string[];
+    source_lesson_ids: string[];
+    source_issue_ids: string[];
+    confidence_distribution: unknown;
+    generation_cost_usd?: number;
+    generation_input_tokens?: number;
+    needs_review?: boolean;
+  }): void {
+    const epoch = Date.now();
+    const createdAt = new Date(epoch).toISOString();
+    this.db.prepare(
+      `INSERT INTO learning_records (
+        id, topic, last_synthesized, applies_to, summary, content,
+        source_session_ids, source_lesson_ids, source_issue_ids,
+        confidence_distribution, generation_cost_usd, generation_input_tokens,
+        needs_review, created_at, created_at_epoch
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(topic) DO UPDATE SET
+        last_synthesized=excluded.last_synthesized,
+        applies_to=excluded.applies_to,
+        summary=excluded.summary,
+        content=excluded.content,
+        source_session_ids=excluded.source_session_ids,
+        source_lesson_ids=excluded.source_lesson_ids,
+        source_issue_ids=excluded.source_issue_ids,
+        confidence_distribution=excluded.confidence_distribution,
+        generation_cost_usd=excluded.generation_cost_usd,
+        generation_input_tokens=excluded.generation_input_tokens,
+        needs_review=excluded.needs_review`
+    ).run(
+      record.id,
+      record.topic,
+      record.last_synthesized,
+      JSON.stringify(record.applies_to),
+      record.summary,
+      JSON.stringify(record.content),
+      JSON.stringify(record.source_session_ids),
+      JSON.stringify(record.source_lesson_ids),
+      JSON.stringify(record.source_issue_ids),
+      JSON.stringify(record.confidence_distribution),
+      record.generation_cost_usd ?? null,
+      record.generation_input_tokens ?? null,
+      record.needs_review ? 1 : 0,
+      createdAt,
+      epoch
+    );
+  }
+
+  listLearningRecords(): Array<{
+    id: string;
+    topic: string;
+    last_synthesized: string;
+    summary: string;
+    needs_review: boolean;
+  }> {
+    const rows = this.db
+      .prepare(
+        'SELECT id, topic, last_synthesized, summary, needs_review FROM learning_records ORDER BY last_synthesized DESC'
+      )
+      .all() as Array<{
+      id: string;
+      topic: string;
+      last_synthesized: string;
+      summary: string;
+      needs_review: number;
+    }>;
+    return rows.map((r) => ({ ...r, needs_review: r.needs_review === 1 }));
+  }
+
+  /**
+   * Phase 5 drift detection — flag topics whose latest learning_record
+   * is older than any newly-landed lesson observation for the same topic.
+   */
+  markLearningRecordsNeedReview(topics: readonly string[]): void {
+    if (topics.length === 0) return;
+    const placeholders = topics.map(() => '?').join(',');
+    this.db.prepare(
+      `UPDATE learning_records SET needs_review = 1 WHERE topic IN (${placeholders})`
+    ).run(...topics);
+  }
+
+  /**
+   * Phase 6 — upsert a golden_doc_sources row.
+   */
+  upsertGoldenDocSource(source: {
+    id: string;
+    golden_doc_path: string;
+    generated_at: string;
+    source_learning_ids: string[];
+    generation_prompt_hash: string;
+    generation_cost_usd?: number;
+    human_reviewed?: boolean;
+    reviewer?: string;
+    needs_review?: boolean;
+    last_review_at?: string;
+  }): void {
+    this.db.prepare(
+      `INSERT INTO golden_doc_sources (
+        id, golden_doc_path, generated_at, source_learning_ids,
+        generation_prompt_hash, generation_cost_usd, human_reviewed,
+        reviewer, needs_review, last_review_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(golden_doc_path) DO UPDATE SET
+        generated_at=excluded.generated_at,
+        source_learning_ids=excluded.source_learning_ids,
+        generation_prompt_hash=excluded.generation_prompt_hash,
+        generation_cost_usd=excluded.generation_cost_usd,
+        human_reviewed=excluded.human_reviewed,
+        reviewer=excluded.reviewer,
+        needs_review=excluded.needs_review,
+        last_review_at=excluded.last_review_at`
+    ).run(
+      source.id,
+      source.golden_doc_path,
+      source.generated_at,
+      JSON.stringify(source.source_learning_ids),
+      source.generation_prompt_hash,
+      source.generation_cost_usd ?? null,
+      source.human_reviewed ? 1 : 0,
+      source.reviewer ?? null,
+      source.needs_review ? 1 : 0,
+      source.last_review_at ?? null
+    );
+  }
+
   rebuildObservationsFTSIndex(): void {
     const hasFTS = (this.db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='observations_fts'"

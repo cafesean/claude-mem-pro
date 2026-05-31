@@ -535,6 +535,97 @@ export const migration010: Migration = {
   }
 };
 
+/**
+ * Migration 011 — dev-workflow Phase 4/5/6 tables.
+ *
+ * Adds session_records, learning_records, and golden_doc_sources so the
+ * dev-workflow synthesis / extraction / golden-doc pipeline has durable
+ * SQLite storage alongside the existing observations.
+ *
+ * All three tables store rich shapes in a TEXT/JSON `content` column so
+ * the schemas can evolve without further migrations.
+ */
+export const migration011: Migration = {
+  version: 11,
+  up: (db: Database) => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS session_records (
+        id TEXT PRIMARY KEY,
+        memory_session_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        date TEXT NOT NULL,
+        projects TEXT NOT NULL,
+        branch TEXT,
+        status TEXT NOT NULL,
+        type TEXT NOT NULL,
+        topics TEXT NOT NULL,
+        tags TEXT NOT NULL,
+        last_updated TEXT NOT NULL,
+        sdk_touched TEXT NOT NULL,
+        apps_touched TEXT NOT NULL,
+        commits TEXT NOT NULL,
+        related_sessions TEXT NOT NULL,
+        specs TEXT NOT NULL,
+        content TEXT NOT NULL,
+        observation_refs TEXT NOT NULL,
+        generation_metadata TEXT,
+        created_at TEXT NOT NULL,
+        created_at_epoch INTEGER NOT NULL
+      )
+    `);
+    db.run('CREATE INDEX IF NOT EXISTS idx_session_records_session_id ON session_records(memory_session_id)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_session_records_date ON session_records(date)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_session_records_status ON session_records(status)');
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS learning_records (
+        id TEXT PRIMARY KEY,
+        topic TEXT NOT NULL,
+        last_synthesized TEXT NOT NULL,
+        applies_to TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        content TEXT NOT NULL,
+        source_session_ids TEXT NOT NULL,
+        source_lesson_ids TEXT NOT NULL,
+        source_issue_ids TEXT NOT NULL,
+        confidence_distribution TEXT NOT NULL,
+        generation_cost_usd REAL,
+        generation_input_tokens INTEGER,
+        needs_review INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        created_at_epoch INTEGER NOT NULL,
+        UNIQUE(topic)
+      )
+    `);
+    db.run('CREATE INDEX IF NOT EXISTS idx_learning_records_topic ON learning_records(topic)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_learning_records_needs_review ON learning_records(needs_review)');
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS golden_doc_sources (
+        id TEXT PRIMARY KEY,
+        golden_doc_path TEXT NOT NULL UNIQUE,
+        generated_at TEXT NOT NULL,
+        source_learning_ids TEXT NOT NULL,
+        generation_prompt_hash TEXT NOT NULL,
+        generation_cost_usd REAL,
+        human_reviewed INTEGER NOT NULL DEFAULT 0,
+        reviewer TEXT,
+        needs_review INTEGER NOT NULL DEFAULT 0,
+        last_review_at TEXT
+      )
+    `);
+    db.run('CREATE INDEX IF NOT EXISTS idx_golden_doc_path ON golden_doc_sources(golden_doc_path)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_golden_doc_needs_review ON golden_doc_sources(needs_review)');
+
+    logger.debug('DB', '[migration011] Added session_records, learning_records, golden_doc_sources');
+  },
+  down: (db: Database) => {
+    db.run('DROP TABLE IF EXISTS golden_doc_sources');
+    db.run('DROP TABLE IF EXISTS learning_records');
+    db.run('DROP TABLE IF EXISTS session_records');
+  }
+};
+
 export const migrations: Migration[] = [
   migration001,
   migration002,
@@ -545,5 +636,6 @@ export const migrations: Migration[] = [
   migration007,
   migration008,
   migration009,
-  migration010
+  migration010,
+  migration011
 ];

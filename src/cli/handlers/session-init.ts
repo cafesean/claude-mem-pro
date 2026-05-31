@@ -146,6 +146,36 @@ export const sessionInitHandler: EventHandler = {
       sessionId: sessionDbId
     });
 
+    // Phase 2 live wiring — fire-and-forget correction capture.
+    // Gated behind CLAUDE_MEM_CAPTURE_CORRECTIONS (env or settings.json).
+    // Detects past-reference / direct / rejection / style corrections in
+    // the user prompt and writes a user_correction observation if matched.
+    try {
+      const captureEnabled =
+        process.env.CLAUDE_MEM_CAPTURE_CORRECTIONS === '1' ||
+        process.env.CLAUDE_MEM_CAPTURE_CORRECTIONS === 'true' ||
+        String((settings as Record<string, unknown>).CLAUDE_MEM_CAPTURE_CORRECTIONS).toLowerCase() === 'true' ||
+        String((settings as Record<string, unknown>).CLAUDE_MEM_CAPTURE_CORRECTIONS) === '1';
+      if (captureEnabled && prompt && prompt.trim().length > 0 && prompt !== '[media prompt]') {
+        const { detectCorrection } = await import('../../services/dev-workflow/correction-detector.js');
+        const signal = detectCorrection(prompt);
+        if (signal) {
+          // Fire-and-forget; we do NOT block prompt processing.
+          void executeWithWorkerFallback('/api/observations/dev-workflow/user-correction', 'POST', {
+            sessionDbId,
+            memorySessionId: sessionId,
+            project,
+            userMessage: prompt,
+            signal
+          }).catch((err) => {
+            logger.warn('HOOK', `correction capture dispatch failed: ${(err as Error).message?.slice(0, 200)}`);
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn('HOOK', `correction capture setup failed: ${(err as Error).message?.slice(0, 200)}`);
+    }
+
     if (additionalContext) {
       return {
         continue: true,

@@ -11,6 +11,38 @@ import { USER_SETTINGS_PATH } from '../../../shared/paths.js';
 import { getProjectContext } from '../../../utils/project-name.js';
 import { normalizePlatformSource } from '../../../shared/platform-source.js';
 import { PrivacyCheckValidator } from '../validation/PrivacyCheckValidator.js';
+import { classifyToolCall } from '../../../shared/mutation-filter.js';
+import { MutationStore, extractVerb } from '../../sqlite/MutationStore.js';
+
+/** Comma-separated settings → pattern array. */
+function splitPatterns(v: string | undefined): string[] {
+  return (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function envBool(key: string, dflt: boolean): boolean {
+  const v = process.env[key];
+  if (v === undefined) return dflt;
+  return v === 'true' || v === '1';
+}
+
+/** Best-effort target string for the mutation log. */
+function mutationTarget(input: unknown): string | null {
+  if (!input || typeof input !== 'object') return null;
+  const o = input as Record<string, unknown>;
+  const p = o.file_path ?? o.path ?? o.notebook_path;
+  if (typeof p === 'string') return p;
+  if (typeof o.command === 'string') {
+    const cmd = o.command;
+    // For git commits, capture the message SUBJECT only (first -m value, first
+    // line) — not the whole multi-line command, which pollutes the digest.
+    const m = cmd.match(/git\s+commit\b[^]*?-m\s+(["'])([^]*?)\1/);
+    if (m) return m[2].split('\n')[0].slice(0, 120);
+    const verb = cmd.match(/\bgit\s+(push|tag|merge)\b/);
+    if (verb) return `git ${verb[1]}`;
+    return cmd.split('\n')[0].slice(0, 120);
+  }
+  return null;
+}
 import { EventEmitter } from 'events';
 
 export interface SummaryStoredEvent {
@@ -124,6 +156,45 @@ export async function ingestObservation(payload: ObservationPayload): Promise<In
   }
 
   const store = dbManager.getSessionStore();
+
+  // Mutation log: capture durable changes (file writes to real paths, external
+  // tool mutations like Notion/Jira/Shopify, git commits) — mechanical, no LLM.
+  // Independent of the observation pipeline below.
+  if (envBool('CLAUDE_MEM_CAPTURE_MUTATIONS', true)) {
+    try {
+      const decision = classifyToolCall(
+        { toolName: payload.toolName, input: (payload.toolInput ?? null) as Record<string, unknown> | null },
+        {
+          include: splitPatterns(process.env.CLAUDE_MEM_MUTATION_INCLUDE),
+          exclude: splitPatterns(process.env.CLAUDE_MEM_MUTATION_EXCLUDE),
+        },
+      );
+      if (decision === 'capture') {
+        const target = mutationTarget(payload.toolInput);
+        const mutations = new MutationStore(store.db as never);
+        mutations.insert({
+          toolName: payload.toolName,
+          target,
+          verb: extractVerb(payload.toolName, typeof target === 'string' ? target : null),
+          project,
+          contentSessionId: payload.contentSessionId,
+          detail: payload.toolInput !== undefined
+            ? stripMemoryTagsFromJson(JSON.stringify(payload.toolInput)).slice(0, 500)
+            : null,
+          createdAtEpoch: Date.now(),
+        });
+        logger.debug('INGEST', 'Captured mutation', { toolName: payload.toolName, target, project });
+      }
+    } catch (err) {
+      logger.warn('INGEST', `mutation capture failed: ${(err as Error).message?.slice(0, 200)}`);
+    }
+  }
+
+  // Old per-tool observation track (the noise source) — OFF by default.
+  // Mutation log above supersedes it. Re-enable with CLAUDE_MEM_CAPTURE_OBSERVATIONS=true.
+  if (!envBool('CLAUDE_MEM_CAPTURE_OBSERVATIONS', false)) {
+    return { ok: true, status: 'skipped', reason: 'observations_disabled' };
+  }
 
   let sessionDbId: number;
   let promptNumber: number;

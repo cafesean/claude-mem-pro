@@ -193,6 +193,13 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'dev-workflow':
+    case 'dw': {
+      const { runDevWorkflowCommand } = await import('./commands/dev-workflow.js');
+      await runDevWorkflowCommand(args.slice(1));
+      break;
+    }
+
     default: {
       console.error(pc.red(`Unknown command: ${command}`));
       console.error(`Run ${pc.bold('npx claude-mem --help')} for usage information.`);

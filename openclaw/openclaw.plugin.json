@@ -25,8 +25,7 @@
       },
       "workerPort": {
         "type": "number",
-        "default": 37777,
-        "description": "Port for Claude-Mem worker service"
+        "description": "Port for the claude-mem-pro worker. Omit to auto-derive the per-user default (37700 + uid%100) or honor CLAUDE_MEM_WORKER_PORT."
       },
       "workerHost": {
         "type": "string",

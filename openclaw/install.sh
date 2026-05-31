@@ -4,6 +4,11 @@ set -euo pipefail
 readonly MIN_BUN_VERSION="1.1.14"
 readonly INSTALLER_VERSION="1.0.0"
 
+# claude-mem-pro worker port: per-user default (37700 + uid%100), overridable
+# via CLAUDE_MEM_WORKER_PORT. The legacy fixed 37777 only worked when
+# uid%100 == 77; everything below uses this computed value.
+WORKER_PORT="${CLAUDE_MEM_WORKER_PORT:-$((37700 + ($(id -u) % 100)))}"
+
 NON_INTERACTIVE=""
 CLI_PROVIDER=""
 CLI_API_KEY=""
@@ -157,16 +162,16 @@ check_port_37777() {
   local port_in_use=""
 
   if command -v lsof &>/dev/null; then
-    if lsof -i :37777 -sTCP:LISTEN &>/dev/null; then
+    if lsof -i :${WORKER_PORT} -sTCP:LISTEN &>/dev/null; then
       port_in_use="true"
     fi
   elif command -v ss &>/dev/null; then
-    if ss -tlnp 2>/dev/null | grep -q ':37777 '; then
+    if ss -tlnp 2>/dev/null | grep -q ":${WORKER_PORT} "; then
       port_in_use="true"
     fi
   elif command -v curl &>/dev/null; then
     local response
-    response="$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:37777/api/health" 2>/dev/null)" || true
+    response="$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${WORKER_PORT}/api/health" 2>/dev/null)" || true
     if [[ "$response" == "200" ]]; then
       port_in_use="true"
     fi
@@ -555,7 +560,7 @@ run_openclaw() {
   fi
 }
 
-CLAUDE_MEM_REPO="https://github.com/thedotmack/claude-mem.git"
+CLAUDE_MEM_REPO="https://github.com/cafesean/claude-mem.git"
 CLAUDE_MEM_BRANCH="${CLI_BRANCH:-main}"
 PLUGIN_FRESHLY_INSTALLED=""
 
@@ -779,7 +784,7 @@ configure_memory_slot() {
             'claude-mem': {
               enabled: true,
               config: {
-                workerPort: 37777,
+                workerPort: ${WORKER_PORT},
                 syncMemoryFile: true
               }
             }
@@ -812,7 +817,7 @@ configure_memory_slot() {
       config.plugins.entries['claude-mem'] = {
         enabled: true,
         config: {
-          workerPort: 37777,
+          workerPort: ${WORKER_PORT},
           syncMemoryFile: true
         }
       };
@@ -973,7 +978,7 @@ write_settings() {
     const defaults = {
       CLAUDE_MEM_MODEL: 'claude-sonnet-4-6',
       CLAUDE_MEM_CONTEXT_OBSERVATIONS: '50',
-      CLAUDE_MEM_WORKER_PORT: '37777',
+      CLAUDE_MEM_WORKER_PORT: '${WORKER_PORT}',
       CLAUDE_MEM_WORKER_HOST: '127.0.0.1',
       CLAUDE_MEM_SKIP_TOOLS: 'ListMcpResourcesTool,SlashCommand,Skill,TodoWrite,AskUserQuestion',
       CLAUDE_MEM_PROVIDER: 'claude',
@@ -1055,7 +1060,7 @@ find_claude_mem_install_dir() {
   local -a search_paths=(
     "$resolved_dir"
     "${HOME}/.openclaw/extensions/claude-mem"
-    "${HOME}/.claude/plugins/marketplaces/thedotmack"
+    "${HOME}/.claude/plugins/marketplaces/cafesean"
     "${HOME}/.openclaw/plugins/claude-mem"
   )
 
@@ -1100,7 +1105,7 @@ start_worker() {
     error "Cannot find claude-mem plugin installation directory"
     error "Expected worker-service.cjs in one of:"
     error "  ~/.openclaw/extensions/claude-mem/plugin/scripts/"
-    error "  ~/.claude/plugins/marketplaces/thedotmack/plugin/scripts/"
+    error "  ~/.claude/plugins/marketplaces/cafesean/plugin/scripts/"
     error ""
     error "Try reinstalling the plugin and re-running this installer."
     return 1
@@ -1121,7 +1126,7 @@ start_worker() {
     fi
   fi
 
-  CLAUDE_MEM_WORKER_PORT=37777 nohup "$BUN_PATH" "$worker_script" \
+  CLAUDE_MEM_WORKER_PORT=${WORKER_PORT} nohup "$BUN_PATH" "$worker_script" \
     >> "$log_file" 2>&1 &
   WORKER_PID=$!
 
@@ -1130,7 +1135,7 @@ start_worker() {
   INSTALLER_PID_FILE="$pid_file" INSTALLER_WORKER_PID="$WORKER_PID" node -e "
     const info = {
       pid: parseInt(process.env.INSTALLER_WORKER_PID, 10),
-      port: 37777,
+      port: ${WORKER_PORT},
       startedAt: new Date().toISOString(),
       version: 'installer'
     };
@@ -1144,8 +1149,8 @@ start_worker() {
 verify_health() {
   local max_attempts=30
   local attempt=1
-  local health_url="http://127.0.0.1:37777/api/health"
-  local readiness_url="http://127.0.0.1:37777/api/readiness"
+  local health_url="http://127.0.0.1:${WORKER_PORT}/api/health"
+  local readiness_url="http://127.0.0.1:${WORKER_PORT}/api/readiness"
   local health_alive=false
 
   info "Verifying worker health..."
@@ -1174,7 +1179,7 @@ verify_health() {
   if [[ "$health_alive" != "true" ]]; then
     warn "Worker health check timed out after ${max_attempts} attempts"
     warn "The worker may still be starting up. Check status with:"
-    warn "  curl http://127.0.0.1:37777/api/health"
+    warn "  curl http://127.0.0.1:${WORKER_PORT}/api/health"
     warn "  Or check logs: ~/.claude-mem/logs/"
     return 1
   fi
@@ -1196,7 +1201,7 @@ verify_health() {
 
   warn "Worker is running but initialization is still in progress"
   warn "This is normal on first run — the worker will finish initializing in the background."
-  warn "Check readiness with: curl http://127.0.0.1:37777/api/readiness"
+  warn "Check readiness with: curl http://127.0.0.1:${WORKER_PORT}/api/readiness"
   return 0
 }
 
@@ -1458,11 +1463,11 @@ print_completion_summary() {
   echo -e "  ${COLOR_GREEN}✓${COLOR_RESET}  Settings written to ~/.claude-mem/settings.json"
 
   if [[ -n "$WORKER_PID" ]] && kill -0 "$WORKER_PID" 2>/dev/null; then
-    echo -e "  ${COLOR_GREEN}✓${COLOR_RESET}  Worker running on port ${COLOR_BOLD}37777${COLOR_RESET} (PID: ${WORKER_PID})"
+    echo -e "  ${COLOR_GREEN}✓${COLOR_RESET}  Worker running on port ${COLOR_BOLD}${WORKER_PORT}${COLOR_RESET} (PID: ${WORKER_PID})"
   elif [[ -n "$WORKER_UPTIME" && "$WORKER_UPTIME" =~ ^[0-9]+$ ]] && (( WORKER_UPTIME > 0 )); then
     local uptime_formatted
     uptime_formatted="$(format_uptime_ms "$WORKER_UPTIME")"
-    echo -e "  ${COLOR_GREEN}✓${COLOR_RESET}  Worker running on port ${COLOR_BOLD}37777${COLOR_RESET} (PID: ${WORKER_REPORTED_PID}, uptime: ${uptime_formatted})"
+    echo -e "  ${COLOR_GREEN}✓${COLOR_RESET}  Worker running on port ${COLOR_BOLD}${WORKER_PORT}${COLOR_RESET} (PID: ${WORKER_REPORTED_PID}, uptime: ${uptime_formatted})"
   else
     echo -e "  ${COLOR_YELLOW}⚠${COLOR_RESET}  Worker may not be running — check logs at ~/.claude-mem/logs/"
   fi
@@ -1484,7 +1489,7 @@ print_completion_summary() {
   echo ""
   echo -e "  ${COLOR_CYAN}1.${COLOR_RESET} Restart your OpenClaw gateway to load the plugin"
   echo -e "  ${COLOR_CYAN}2.${COLOR_RESET} Verify with ${COLOR_BOLD}/claude-mem-status${COLOR_RESET} in any OpenClaw chat"
-  echo -e "  ${COLOR_CYAN}3.${COLOR_RESET} Check the viewer UI at ${COLOR_BOLD}http://localhost:37777${COLOR_RESET}"
+  echo -e "  ${COLOR_CYAN}3.${COLOR_RESET} Check the viewer UI at ${COLOR_BOLD}http://localhost:${WORKER_PORT}${COLOR_RESET}"
   if [[ "$FEED_CONFIGURED" == "true" ]]; then
     echo -e "  ${COLOR_CYAN}4.${COLOR_RESET} Run ${COLOR_BOLD}/claude-mem-feed${COLOR_RESET} to check feed status"
   fi
@@ -1544,7 +1549,7 @@ main() {
   info "${COLOR_BOLD}[7/8]${COLOR_RESET} Starting worker service..."
 
   if check_port_37777; then
-    warn "Port 37777 is already in use (worker may already be running)"
+    warn "Port ${WORKER_PORT} is already in use (worker may already be running)"
     info "Checking if the existing service is healthy..."
     if verify_health; then
       local expected_version=""
@@ -1578,7 +1583,7 @@ main() {
 
       if [[ "$needs_restart" == "true" ]]; then
         info "Stopping existing worker..."
-        curl -s -X POST "http://127.0.0.1:37777/api/admin/shutdown" >/dev/null 2>&1 || true
+        curl -s -X POST "http://127.0.0.1:${WORKER_PORT}/api/admin/shutdown" >/dev/null 2>&1 || true
         sleep 2
 
         if check_port_37777; then
@@ -1629,7 +1634,7 @@ main() {
         fi
       fi
     else
-      warn "Port 37777 is occupied but not responding to health checks"
+      warn "Port ${WORKER_PORT} is occupied but not responding to health checks"
       warn "Another process may be using this port. Stop it and re-run the installer,"
       warn "or change CLAUDE_MEM_WORKER_PORT in ~/.claude-mem/settings.json"
     fi
