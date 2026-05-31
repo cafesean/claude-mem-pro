@@ -3,10 +3,8 @@
 # Mirrors openclaw/install.sh: ensure deps + worker, drop the plugin, enable it.
 set -euo pipefail
 
-REPO_URL="https://github.com/cafesean/claude-mem.git"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 PLUGIN_DST="${HERMES_HOME}/plugins/claude-mem-pro"
-NON_INTERACTIVE="${1:-}"
 
 log() { printf '  \033[36m›\033[0m %s\n' "$*"; }
 err() { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; }
