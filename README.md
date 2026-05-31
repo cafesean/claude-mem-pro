@@ -1,419 +1,294 @@
-<h1 align="center">
-  <br>
-  <a href="https://github.com/thedotmack/claude-mem">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/claude-mem-logo-for-dark-mode.webp">
-      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp">
-      <img src="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp" alt="Claude-Mem" width="400">
-    </picture>
-  </a>
-  <br>
-</h1>
+# claude-mem-pro
 
-<p align="center">
-  <a href="docs/i18n/README.zh.md">🇨🇳 中文</a> •
-  <a href="docs/i18n/README.zh-tw.md">🇹🇼 繁體中文</a> •
-  <a href="docs/i18n/README.ja.md">🇯🇵 日本語</a> •
-  <a href="docs/i18n/README.pt.md">🇵🇹 Português</a> •
-  <a href="docs/i18n/README.pt-br.md">🇧🇷 Português</a> •
-  <a href="docs/i18n/README.ko.md">🇰🇷 한국어</a> •
-  <a href="docs/i18n/README.es.md">🇪🇸 Español</a> •
-  <a href="docs/i18n/README.de.md">🇩🇪 Deutsch</a> •
-  <a href="docs/i18n/README.fr.md">🇫🇷 Français</a> •
-  <a href="docs/i18n/README.he.md">🇮🇱 עברית</a> •
-  <a href="docs/i18n/README.ar.md">🇸🇦 العربية</a> •
-  <a href="docs/i18n/README.ru.md">🇷🇺 Русский</a> •
-  <a href="docs/i18n/README.pl.md">🇵🇱 Polski</a> •
-  <a href="docs/i18n/README.cs.md">🇨🇿 Čeština</a> •
-  <a href="docs/i18n/README.nl.md">🇳🇱 Nederlands</a> •
-  <a href="docs/i18n/README.tr.md">🇹🇷 Türkçe</a> •
-  <a href="docs/i18n/README.uk.md">🇺🇦 Українська</a> •
-  <a href="docs/i18n/README.vi.md">🇻🇳 Tiếng Việt</a> •
-  <a href="docs/i18n/README.tl.md">🇵🇭 Tagalog</a> •
-  <a href="docs/i18n/README.id.md">🇮🇩 Indonesia</a> •
-  <a href="docs/i18n/README.th.md">🇹🇭 ไทย</a> •
-  <a href="docs/i18n/README.hi.md">🇮🇳 हिन्दी</a> •
-  <a href="docs/i18n/README.bn.md">🇧🇩 বাংলা</a> •
-  <a href="docs/i18n/README.ur.md">🇵🇰 اردو</a> •
-  <a href="docs/i18n/README.ro.md">🇷🇴 Română</a> •
-  <a href="docs/i18n/README.sv.md">🇸🇪 Svenska</a> •
-  <a href="docs/i18n/README.it.md">🇮🇹 Italiano</a> •
-  <a href="docs/i18n/README.el.md">🇬🇷 Ελληνικά</a> •
-  <a href="docs/i18n/README.hu.md">🇭🇺 Magyar</a> •
-  <a href="docs/i18n/README.fi.md">🇫🇮 Suomi</a> •
-  <a href="docs/i18n/README.da.md">🇩🇰 Dansk</a> •
-  <a href="docs/i18n/README.no.md">🇳🇴 Norsk</a>
-</p>
+**Durable, low-noise memory for Claude Code — capture what *changed*, recall it from your own artifacts.**
 
-<h4 align="center">Persistent memory compression system built for <a href="https://claude.com/claude-code" target="_blank">Claude Code</a>.</h4>
+claude-mem-pro is a Claude Code plugin that gives your agent continuity across sessions
+without drowning it in noise. Instead of recording every action the agent takes
+and asking an LLM to compress the pile, claude-mem-pro records the **durable changes** a
+session actually produced — file edits, external-system mutations (Notion / Jira /
+Shopify / …), and git commits — and hands each new session a compact digest of
+them. When you need deeper history, claude-mem-pro acts as a **librarian** over the
+artifacts your project already keeps (CLAUDE.md, memory notes, specs, session
+files) rather than a separate, ever-staling index.
 
-<p align="center">
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License">
-  </a>
-  <a href="package.json">
-    <img src="https://img.shields.io/badge/version-6.5.0-green.svg" alt="Version">
-  </a>
-  <a href="package.json">
-    <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg" alt="Node">
-  </a>
-  <a href="https://github.com/thedotmack/awesome-claude-code">
-    <img src="https://awesome.re/mentioned-badge.svg" alt="Mentioned in Awesome Claude Code">
-  </a>
-</p>
+> **Fork notice.** claude-mem-pro is a fork of [`thedotmack/claude-mem`](https://github.com/thedotmack/claude-mem)
+> by Alex Newman, re-architected around a deterministic mutation log and an
+> artifact-first recall model. It keeps claude-mem's worker/hook/SQLite foundation
+> and the optional semantic search, and adds the three tracks described below.
+> Huge credit to the upstream project — see [What's different](#whats-different-from-claude-mem).
 
-<p align="center">
-  <a href="https://trendshift.io/repositories/15496" target="_blank">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/trendshift-badge-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/trendshift-badge.svg">
-      <img src="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/trendshift-badge.svg" alt="thedotmack/claude-mem | Trendshift" width="250" height="55"/>
-    </picture>
-  </a>
-</p>
+---
 
-<br>
+## Contents
 
-<table align="center">
-  <tr>
-    <td align="center">
-      <a href="https://github.com/thedotmack/claude-mem">
-        <picture>
-          <img
-            src="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/cm-preview.gif"
-            alt="Claude-Mem Preview"
-            width="500"
-          >
-        </picture>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://www.star-history.com/#thedotmack/claude-mem&Date">
-        <picture>
-          <source
-            media="(prefers-color-scheme: dark)"
-            srcset="https://api.star-history.com/image?repos=thedotmack/claude-mem&type=date&theme=dark&legend=top-left"
-          />
-          <source
-            media="(prefers-color-scheme: light)"
-            srcset="https://api.star-history.com/image?repos=thedotmack/claude-mem&type=date&legend=top-left"
-          />
-          <img
-            alt="Star History Chart"
-            src="https://api.star-history.com/image?repos=thedotmack/claude-mem&type=date&legend=top-left"
-            width="500"
-          />
-        </picture>
-      </a>
-    </td>
-  </tr>
-</table>
-
-<p align="center">
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#how-it-works">How It Works</a> •
-  <a href="#mcp-search-tools">Search Tools</a> •
-  <a href="#documentation">Documentation</a> •
-  <a href="#configuration">Configuration</a> •
-  <a href="#troubleshooting">Troubleshooting</a> •
-  <a href="#license">License</a>
-</p>
-
-<p align="center">
-  Claude-Mem seamlessly preserves context across sessions by automatically capturing tool usage observations, generating semantic summaries, and making them available to future sessions. This enables Claude to maintain continuity of knowledge about projects even after sessions end or reconnect.
-</p>
+- [Quick Start](#quick-start)
+- [Why claude-mem-pro](#why-claude-mem-pro)
+- [What's different from claude-mem](#whats-different-from-claude-mem)
+- [How it works](#how-it-works)
+- [Recall: the librarian](#recall-the-librarian)
+- [Search: semantic memory (optional)](#search-semantic-memory-optional)
+- [Integrations](#integrations)
+- [Configuration](#configuration)
+- [Privacy](#privacy)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [Development](#development)
+- [License & credit](#license--credit)
 
 ---
 
 ## Quick Start
 
-Install with a single command:
+claude-mem-pro installs as a Claude Code plugin from the `cafesean` marketplace:
+
+```text
+/plugin marketplace add cafesean/claude-mem
+/plugin install claude-mem-pro@cafesean
+```
+
+Restart Claude Code. That's it — durable changes are now captured automatically, and
+every new session opens with a [mutation digest](#track-a4--inject-a-mutation-digest)
+of what recently changed. Ask things like *"how did we do X last time?"* and the
+[recall librarian](#recall-the-librarian) finds it in your project's artifacts.
+
+> **Running it alongside upstream claude-mem?** Give claude-mem-pro its own data dir
+> and worker port so the two don't share a database:
+>
+> ```bash
+> export CLAUDE_MEM_DATA_DIR="$HOME/.claude-mem-pro"
+> export CLAUDE_MEM_WORKER_PORT=37800
+> ```
+>
+> Every path and port derives from those two variables. See [Configuration](#configuration).
+
+Beyond Claude Code, claude-mem-pro also runs on **OpenClaw gateways** (Hermes support
+is planned) — see [Integrations](#integrations).
+
+---
+
+## Why claude-mem-pro
+
+A memory system that captures *everything an agent does* fills up with noise: file
+reads, scratch commands, dead-end exploration, build output. Compressing that noise with an
+LLM produces plausible-sounding summaries of work that didn't matter, and injecting
+those summaries back into new sessions wastes tokens and attention.
+
+claude-mem-pro starts from a different premise: **the signal is the mutation.** What a
+session is actually worth is the set of durable changes it left behind. Those are
+cheap to capture deterministically (no LLM in the hot path), cheap to inject as a
+digest, and they point straight at the real artifacts — your specs, your session
+notes, your commits — where the *reasoning* already lives.
+
+---
+
+## What's different from claude-mem
+
+| | claude-mem (upstream) | claude-mem-pro |
+|---|---|---|
+| **Capture** | Every tool call → LLM-compressed "observations" | Durable **mutations** only — repo writes, external-system MCP mutations, git commits. Deterministic classifier, **no LLM in the capture path** |
+| **Inject** | A large observation + session-summary index dumped into each new session | A compact **mutation digest** — recent durable changes grouped by day, deduped, repo-relative paths — plus a pointer to recall |
+| **Recall** | Semantic vector search over the observation corpus | A **librarian** that searches your project's own artifacts (CLAUDE.md → memory → specs → sessions) by authority + recency. Semantic search remains available as a complement |
+| **Noise** | Reads/scratch recorded then filtered downstream | Reads/scratch/temp/build output never recorded |
+
+The old behavior is still one env var away (`CLAUDE_MEM_INJECT_MODE=legacy`,
+`CLAUDE_MEM_CAPTURE_OBSERVATIONS=true`) — see [Configuration](#configuration).
+
+---
+
+## How it works
+
+claude-mem-pro runs as a set of Claude Code lifecycle hooks that talk to a small local
+worker service (Bun-managed HTTP API) backed by SQLite. Three tracks define the
+memory model:
+
+### Track A — Capture: a mutation log, not an action log
+
+On every `PostToolUse`, a pure classifier (`src/shared/mutation-filter.ts`,
+`classifyToolCall()`) decides whether the call was a **durable mutation**:
+
+1. **Deny first** — reads, `/tmp`, build output, and claude-mem-pro's own files (sessions,
+   memory, `.cjs`) are dropped.
+2. **Then allow** — writes to real repo paths, verb-matched mutating MCP tools
+   (e.g. Notion/Jira/Shopify create/update/delete), and `git commit`.
+3. **Config overrides** — explicit include/exclude lists win.
+
+Matches are written to a lightweight, self-creating `mutations` table
+(`MutationStore.ts`). There is **no LLM** in this path — it's a fast, deterministic
+filter. External-system mutations are the key differentiator: a plain file watcher
+can't see a Notion page update, but `PostToolUse` sees the tool call.
+
+### Track A4 — Inject: a mutation digest
+
+At `SessionStart`, claude-mem-pro renders a compact digest of recent mutations
+(`src/services/context/MutationDigest.ts`): grouped by day, deduplicated, paths
+stripped to repo-relative, git commits shown by their subject line. New sessions
+open with a short, honest summary of *what recently changed* and a pointer to the
+recall skill for anything deeper — not a wall of summarized activity.
+
+### Track B — Recall: a librarian over your artifacts
+
+claude-mem-pro doesn't hold your project's knowledge — your **artifacts** do. The `recall`
+skill guides the agent to find past work where it actually lives, in authority
+order:
+
+1. **CLAUDE.md** (per repo) — standing rules / architecture
+2. **Memory notes** — `~/.claude/projects/<project>/memory/*.md`
+3. **Specs** — `_context/**/specs.md` (skipping `SUPERSEDED` / `PARKED`)
+4. **Session files** — `_ai/sessions/*.md` (richest detail; self-contained `##` sections)
+
+It opens the *exact section*, ranks by authority + recency, and reports **pointers,
+not dumps**. Because it reads live files, it is never stale and needs no index.
+
+---
+
+## Recall: the librarian
+
+Ask naturally and the `recall` skill fires:
+
+- "How did we do X last time?"
+- "What did we decide about Y?"
+- "Where's the spec for Z?"
+- "Have we hit this bug before?"
+- "What changed last session?"
+
+claude-mem-pro searches your durable artifacts, finds the matching `##` section, and
+answers with a citation (`file:section`) and a short snippet — so you can drill in
+at the source instead of trusting a lossy summary.
+
+---
+
+## Search: semantic memory (optional)
+
+The upstream semantic-search path is preserved as a **complement** to recall. The
+`mem-search` skill performs vector + full-text search over the observation corpus
+via the worker's HTTP API, using a token-efficient 3-layer workflow:
+
+1. **search** — compact index of hits with IDs
+2. **timeline** — chronological context around a hit
+3. **get_observations** — full detail for only the filtered IDs
+
+Use **recall** for "what did we decide / change / learn" (deterministic, always
+fresh). Use **mem-search** for fuzzy semantic lookups across a large corpus.
+Semantic search requires Chroma (`uv`-provided Python); it can be disabled.
+
+---
+
+## Integrations
+
+claude-mem-pro runs beyond a single Claude Code install. The worker, database, and
+capture model are shared; each host wires into them differently.
+
+### OpenClaw gateways ✅
+
+claude-mem-pro ships a first-class [OpenClaw](https://openclaw.ai) gateway plugin
+(`openclaw/`). It records observations from the gateway's embedded runner sessions,
+injects cross-session context into each agent's system prompt via the
+`before_prompt_build` hook (without overwriting `MEMORY.md`), and can stream a
+real-time observation feed to Telegram, Discord, or Slack.
+
+Install on a gateway by cloning the fork and running its installer:
 
 ```bash
-npx claude-mem install
+git clone https://github.com/cafesean/claude-mem.git
+bash claude-mem/openclaw/install.sh
 ```
 
-Or install for Gemini CLI (auto-detects `~/.gemini`):
+The installer handles dependency checks (Bun, uv), plugin setup, AI-provider
+configuration, worker startup, and optional feed wiring — interactively. See
+`openclaw/SKILL.md` for the full setup guide and config schema.
 
-```bash
-npx claude-mem install --ide gemini-cli
-```
-Or install for OpenCode:
+> The upstream one-liner `curl -fsSL https://install.cmem.ai/openclaw.sh | bash`
+> installs **upstream claude-mem**, not this fork. Use the fork's `openclaw/install.sh`
+> above to deploy claude-mem-pro.
 
-```bash
-npx claude-mem install --ide opencode
-```
+### Hermes 🛣️ (planned)
 
-Or install from the plugin marketplace inside Claude Code:
-
-```bash
-/plugin marketplace add thedotmack/claude-mem
-
-/plugin install claude-mem
-```
-
-Restart Claude Code or Gemini CLI. Context from previous sessions will automatically appear in new sessions.
-
-> **Note:** Claude-Mem is also published on npm, but `npm install -g claude-mem` installs the **SDK/library only** — it does not register the plugin hooks or set up the worker service. Always install via `npx claude-mem install` or the `/plugin` commands above.
-
-### 🦞 OpenClaw Gateway
-
-Install claude-mem as a persistent memory plugin on [OpenClaw](https://openclaw.ai) gateways with a single command:
-
-```bash
-curl -fsSL https://install.cmem.ai/openclaw.sh | bash
-```
-
-The installer handles dependencies, plugin setup, AI provider configuration, worker startup, and optional real-time observation feeds to Telegram, Discord, Slack, and more. See the [OpenClaw Integration Guide](https://docs.claude-mem.ai/openclaw-integration) for details.
-
-**Key Features:**
-
-- 🧠 **Persistent Memory** - Context survives across sessions
-- 📊 **Progressive Disclosure** - Layered memory retrieval with token cost visibility
-- 🔍 **Skill-Based Search** - Query your project history with mem-search skill
-- 🖥️ **Web Viewer UI** - Real-time memory stream at http://localhost:37777
-- 💻 **Claude Desktop Skill** - Search memory from Claude Desktop conversations
-- 🔒 **Privacy Control** - Use `<private>` tags to exclude sensitive content from storage
-- ⚙️ **Context Configuration** - Fine-grained control over what context gets injected
-- 🤖 **Automatic Operation** - No manual intervention required
-- 🔗 **Citations** - Reference past observations with IDs (access via http://localhost:37777/api/observation/{id} or view all in the web viewer at http://localhost:37777)
-- 🧪 **Beta Channel** - Try experimental features like Endless Mode via version switching
-
----
-
-## Documentation
-
-📚 **[View Full Documentation](https://docs.claude-mem.ai/)** - Browse on official website
-
-### Getting Started
-
-- **[Installation Guide](https://docs.claude-mem.ai/installation)** - Quick start & advanced installation
-- **[Gemini CLI Setup](https://docs.claude-mem.ai/gemini-cli/setup)** - Dedicated guide for Google's Gemini CLI integration
-- **[Usage Guide](https://docs.claude-mem.ai/usage/getting-started)** - How Claude-Mem works automatically
-- **[Search Tools](https://docs.claude-mem.ai/usage/search-tools)** - Query your project history with natural language
-- **[Beta Features](https://docs.claude-mem.ai/beta-features)** - Try experimental features like Endless Mode
-
-### Best Practices
-
-- **[Context Engineering](https://docs.claude-mem.ai/context-engineering)** - AI agent context optimization principles
-- **[Progressive Disclosure](https://docs.claude-mem.ai/progressive-disclosure)** - Philosophy behind Claude-Mem's context priming strategy
-
-### Architecture
-
-- **[Overview](https://docs.claude-mem.ai/architecture/overview)** - System components & data flow
-- **[Architecture Evolution](https://docs.claude-mem.ai/architecture-evolution)** - The journey from v3 to v5
-- **[Hooks Architecture](https://docs.claude-mem.ai/hooks-architecture)** - How Claude-Mem uses lifecycle hooks
-- **[Hooks Reference](https://docs.claude-mem.ai/architecture/hooks)** - 7 hook scripts explained
-- **[Worker Service](https://docs.claude-mem.ai/architecture/worker-service)** - HTTP API & Bun management
-- **[Database](https://docs.claude-mem.ai/architecture/database)** - SQLite schema & FTS5 search
-- **[Search Architecture](https://docs.claude-mem.ai/architecture/search-architecture)** - Hybrid search with Chroma vector database
-
-### Configuration & Development
-
-- **[Configuration](https://docs.claude-mem.ai/configuration)** - Environment variables & settings
-- **[Development](https://docs.claude-mem.ai/development)** - Building, testing, contributing
-- **[Troubleshooting](https://docs.claude-mem.ai/troubleshooting)** - Common issues & solutions
-
----
-
-## How It Works
-
-**Core Components:**
-
-1. **5 Lifecycle Hooks** - SessionStart, UserPromptSubmit, PostToolUse, Stop, SessionEnd (6 hook scripts)
-2. **Smart Install** - Cached dependency checker (pre-hook script, not a lifecycle hook)
-3. **Worker Service** - HTTP API on port 37777 with web viewer UI and 10 search endpoints, managed by Bun
-4. **SQLite Database** - Stores sessions, observations, summaries
-5. **mem-search Skill** - Natural language queries with progressive disclosure
-6. **Chroma Vector Database** - Hybrid semantic + keyword search for intelligent context retrieval
-
-See [Architecture Overview](https://docs.claude-mem.ai/architecture/overview) for details.
-
----
-
-## MCP Search Tools
-
-Claude-Mem provides intelligent memory search through **4 MCP tools** following a token-efficient **3-layer workflow pattern**:
-
-**The 3-Layer Workflow:**
-
-1. **`search`** - Get compact index with IDs (~50-100 tokens/result)
-2. **`timeline`** - Get chronological context around interesting results
-3. **`get_observations`** - Fetch full details ONLY for filtered IDs (~500-1,000 tokens/result)
-
-**How It Works:**
-- Claude uses MCP tools to search your memory
-- Start with `search` to get an index of results
-- Use `timeline` to see what was happening around specific observations
-- Use `get_observations` to fetch full details for relevant IDs
-- **~10x token savings** by filtering before fetching details
-
-**Available MCP Tools:**
-
-1. **`search`** - Search memory index with full-text queries, filters by type/date/project
-2. **`timeline`** - Get chronological context around a specific observation or query
-3. **`get_observations`** - Fetch full observation details by IDs (always batch multiple IDs)
-
-**Example Usage:**
-
-```typescript
-// Step 1: Search for index
-search(query="authentication bug", type="bugfix", limit=10)
-
-// Step 2: Review index, identify relevant IDs (e.g., #123, #456)
-
-// Step 3: Fetch full details
-get_observations(ids=[123, 456])
-```
-
-See [Search Tools Guide](https://docs.claude-mem.ai/usage/search-tools) for detailed examples.
-
----
-
-## Beta Features
-
-Claude-Mem offers a **beta channel** with experimental features like **Endless Mode** (biomimetic memory architecture for extended sessions). Switch between stable and beta versions from the web viewer UI at http://localhost:37777 → Settings.
-
-See **[Beta Features Documentation](https://docs.claude-mem.ai/beta-features)** for details on Endless Mode and how to try it.
-
----
-
-## System Requirements
-
-- **Node.js**: 18.0.0 or higher
-- **Claude Code**: Latest version with plugin support
-- **Bun**: JavaScript runtime and process manager (auto-installed if missing)
-- **uv**: Python package manager for vector search (auto-installed if missing)
-- **SQLite 3**: For persistent storage (bundled)
-
----
-### Windows Setup Notes
-
-If you see an error like:
-
-```powershell
-npm : The term 'npm' is not recognized as the name of a cmdlet
-```
-
-Make sure Node.js and npm are installed and added to your PATH. Download the latest Node.js installer from https://nodejs.org and restart your terminal after installation.
+[Hermes](https://github.com/NousResearch/hermes) agents can consume external MCP
+servers, so wiring claude-mem-pro's MCP search/recall surface into a Hermes
+`mcp_servers` config is the natural first step. A dedicated Hermes capture adapter
+(the write side, analogous to the OpenClaw plugin) is **planned, not yet shipped** —
+track it on the roadmap.
 
 ---
 
 ## Configuration
 
-Settings are managed in `~/.claude-mem/settings.json` (auto-created with defaults on first run). Configure AI model, worker port, data directory, log level, and context injection settings.
+Settings live in `~/.claude-mem/settings.json` (auto-created with defaults) and can
+be overridden by `CLAUDE_MEM_*` environment variables. The flags that define
+claude-mem-pro's behavior:
 
-See the **[Configuration Guide](https://docs.claude-mem.ai/configuration)** for all available settings and examples.
+| Variable | Default | Effect |
+|---|---|---|
+| `CLAUDE_MEM_CAPTURE_MUTATIONS` | `true` | Record durable mutations to the `mutations` table |
+| `CLAUDE_MEM_CAPTURE_OBSERVATIONS` | `false` | Re-enable the legacy per-tool observation track (the old noise source) |
+| `CLAUDE_MEM_INJECT_MODE` | `mutations` | `mutations` injects the digest; `legacy` injects the old observation/summary index |
+| `CLAUDE_MEM_DATA_DIR` | `~/.claude-mem` | Root for db / chroma / logs / settings — set per profile to isolate accounts |
+| `CLAUDE_MEM_WORKER_PORT` | `37700 + (uid % 100)` | Worker HTTP port (per-user by default; set explicitly for fixed ports) |
+| `CLAUDE_MEM_MODEL` | `claude-haiku-4-5` | Model used for any LLM-assisted processing (not the capture path) |
 
-### Mode & Language Configuration
+To run claude-mem-pro and upstream claude-mem side by side, give each its own
+`CLAUDE_MEM_DATA_DIR` and `CLAUDE_MEM_WORKER_PORT`. Every path and port derives from
+those two variables.
 
-Claude-Mem supports multiple workflow modes and languages via the `CLAUDE_MEM_MODE` setting.
+---
 
-This option controls both:
-- The workflow behavior (e.g. code, chill, investigation)
-- The language used in generated observations
+## Privacy
 
-#### How to Configure
+Wrap anything sensitive in `<private>…</private>`. Tag stripping happens at the
+**hook layer** (edge), before data ever reaches the worker or database — private
+content is never stored. The deny-first mutation filter also means reads, temp
+files, and build output are never captured in the first place.
 
-Edit your settings file at `~/.claude-mem/settings.json`:
+---
 
-```json
-{
-  "CLAUDE_MEM_MODE": "code--zh"
-}
-```
+## Architecture
 
-Modes are defined in `plugin/modes/`. To see all available modes locally:
+- **Hooks** (`plugin/hooks/hooks.json`) — `Setup → SessionStart → UserPromptSubmit →
+  PostToolUse` dispatch to the worker via `bun-runner.js`, invoking subcommands
+  (`context`, `session-init`, `observation`, …).
+- **Worker service** (`src/services/worker-service.ts`) — Bun-managed HTTP API on
+  the per-user port; handles capture, digest rendering, and search.
+- **Database** — SQLite at `~/.claude-mem/claude-mem.db`. Mutations live in the
+  `mutations` table; the legacy observation corpus remains for `mem-search`.
+- **Mutation classifier** — `src/shared/mutation-filter.ts` (`classifyToolCall()`).
+- **Mutation digest** — `src/services/context/MutationDigest.ts`.
+- **Skills** — `recall` (librarian), `mem-search` (semantic), plus workflow skills
+  (`make-plan`, `do`, `learn-codebase`, `timeline-report`, …) under `plugin/skills/`.
+- **Viewer UI** (`src/ui/viewer/`) — React interface served by the worker for
+  browsing stored memory.
 
-```bash
-ls ~/.claude/plugins/marketplaces/thedotmack/plugin/modes/
-```
+---
 
-#### Available Modes
+## Requirements
 
-| Mode | Description |
-|------------|-------------------------|
-| `code` | Default English mode |
-| `code--zh` | Simplified Chinese mode |
-| `code--ja` | Japanese mode |
+- **Node.js** 18+
+- **Bun** — runtime and worker process manager (auto-installed if missing)
+- **uv** — provides Python for Chroma vector search (auto-installed; only needed for `mem-search`)
+- **Claude Code** with plugin support
 
-Language-specific modes follow the pattern `code--[lang]` where `[lang]` is the ISO 639-1 language code (e.g., `zh` for Chinese, `ja` for Japanese, `es` for Spanish).
-
-> Note: `code--zh` (Simplified Chinese) is already built-in — no additional installation or plugin update is required.
-
-#### After Changing Mode
-
-Restart Claude Code to apply the new mode configuration.
 ---
 
 ## Development
 
-See the **[Development Guide](https://docs.claude-mem.ai/development)** for build instructions, testing, and contribution workflow.
-
----
-
-## Troubleshooting
-
-If experiencing issues, describe the problem to Claude and the troubleshoot skill will automatically diagnose and provide fixes.
-
-See the **[Troubleshooting Guide](https://docs.claude-mem.ai/troubleshooting)** for common issues and solutions.
-
----
-
-## Bug Reports
-
-Create comprehensive bug reports with the automated generator:
-
 ```bash
-cd ~/.claude/plugins/marketplaces/thedotmack
-npm run bug-report
+npm run build-and-sync   # build, sync to the local marketplace, restart the worker
 ```
 
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with tests
-4. Update documentation
-5. Submit a Pull Request
-
-See [Development Guide](https://docs.claude-mem.ai/development) for contribution workflow.
+Source lives in `src/`; the built plugin lives in `plugin/`. The changelog is
+generated automatically — no need to edit it.
 
 ---
 
-## License
+## License & credit
 
-Claude-Mem is licensed under the Apache License 2.0.
+claude-mem-pro is licensed under the **Apache License 2.0** — see [LICENSE](LICENSE).
 
-We chose Apache-2.0 because durable agentic memory should be easy to embed in
-developer tools, local agents, MCP servers, enterprise systems, robotics stacks,
-and production agent harnesses.
+claude-mem-pro is a fork of **[claude-mem](https://github.com/thedotmack/claude-mem)** by
+**Alex Newman** ([@thedotmack](https://github.com/thedotmack)), and inherits its
+worker/hook/SQLite/semantic-search foundation. The mutation-log capture, digest
+injection, and artifact-first recall model are claude-mem-pro's additions. All credit for
+the original architecture goes upstream.
 
-See the [LICENSE](LICENSE) file for full details. See [docs/license.md](docs/license.md)
-and [docs/ip-boundary.md](docs/ip-boundary.md) for licensing scope and the
-open/commercial boundary.
-
-**Note on Ragtime**: The `ragtime/` directory is licensed under the **Apache License 2.0**. See [ragtime/LICENSE](ragtime/LICENSE) for details.
-
----
-
-## Support
-
-- **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/thedotmack/claude-mem/issues)
-- **Repository**: [github.com/thedotmack/claude-mem](https://github.com/thedotmack/claude-mem)
-- **Official X Account**: [@Claude_Memory](https://x.com/Claude_Memory)
-- **Official Discord**: [Join Discord](https://discord.com/invite/J4wttp9vDu)
-- **Author**: Alex Newman ([@thedotmack](https://github.com/thedotmack))
-
----
-
-**Built with Claude Agent SDK** | **Works with Claude Code** | **Made with TypeScript**
-
----
-
-### What About $CMEM?
-
-$CMEM is a solana token created by a 3rd party without Claude-Mem's prior consent, but officially embraced by the creator of Claude-Mem (Alex Newman, @thedotmack). The token acts as a community catalyst for growth and a vehicle for bringing real-time agent data to the developers and knowledge workers that need it most. $CMEM: 2TsmuYUrsctE57VLckZBYEEzdokUF8j8e1GavekWBAGS
+- **claude-mem-pro repository**: [github.com/cafesean/claude-mem](https://github.com/cafesean/claude-mem)
+- **Upstream**: [github.com/thedotmack/claude-mem](https://github.com/thedotmack/claude-mem)
+- **Maintainer**: Sean Liao ([@cafesean](https://github.com/cafesean))

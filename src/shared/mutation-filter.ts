@@ -6,7 +6,7 @@
  * Principle (see _context/.../knowledge-capture-redesign/mutation-capture.md):
  * capture when the agent changed the world (local file write to a real path,
  * or an external system mutation like a Notion/Jira/Shopify tool call); skip
- * reads, searches, scratch writes, build output, and mem-pro's own footprint.
+ * reads, searches, scratch writes, build output, and claude-mem-pro's own footprint.
  *
  * Pure + zero-dependency: deterministic classification from tool name + input.
  * No LLM. Defaults are tuned for "real work vs admin"; callers may pass
@@ -55,7 +55,7 @@ const SCRATCH_PATH_PATTERNS = [
   '/node_modules/', '/dist/', '/build/', '/.next/', '/out/',
   '.cjs',                       // built worker bundles
   '/.git/',
-  '/.claude-mem/',             // mem-pro's own data dir
+  '/.claude-mem/',             // claude-mem-pro's own data dir
   '/_ai/sessions/',            // session files = librarian's job, not mutation log
   '/memory/',                  // memory files = librarian's job
   '.DS_Store',

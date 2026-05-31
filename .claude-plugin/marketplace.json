@@ -9,7 +9,7 @@
   },
   "plugins": [
     {
-      "name": "mem-pro",
+      "name": "claude-mem-pro",
       "version": "13.3.0",
       "source": "./plugin",
       "description": "claude-mem-pro: persistent memory + dev-workflow schema absorb pipeline"

@@ -19,7 +19,7 @@ describe('classifyToolCall — local file writes', () => {
     expect(classifyToolCall({ toolName: 'Write', input: { file_path: '/repo/node_modules/x/y.js' } })).toBe('skip');
   });
 
-  it("skips mem-pro's own footprint (session files, memory, data dir)", () => {
+  it("skips claude-mem-pro's own footprint (session files, memory, data dir)", () => {
     expect(classifyToolCall({ toolName: 'Write', input: { file_path: '/repo/_ai/sessions/2026-05-30-foo.md' } })).toBe('skip');
     expect(classifyToolCall({ toolName: 'Write', input: { file_path: '/Users/x/.claude/projects/p/memory/foo.md' } })).toBe('skip');
     expect(classifyToolCall({ toolName: 'Write', input: { file_path: '/Users/x/.claude-mem/claude-mem.db' } })).toBe('skip');
@@ -62,7 +62,7 @@ describe('classifyToolCall — external MCP mutations', () => {
   it('skips read MCP verbs', () => {
     expect(classifyToolCall({ toolName: 'mcp__notion__notion-fetch' })).toBe('skip');
     expect(classifyToolCall({ toolName: 'mcp__notion__notion-search' })).toBe('skip');
-    expect(classifyToolCall({ toolName: 'mcp__plugin_mem-pro_mcp-search__get_observations' })).toBe('skip');
+    expect(classifyToolCall({ toolName: 'mcp__plugin_claude-mem-pro_mcp-search__get_observations' })).toBe('skip');
     expect(classifyToolCall({ toolName: 'mcp__jira__list_issues' })).toBe('skip');
   });
 
