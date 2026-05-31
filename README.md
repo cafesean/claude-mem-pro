@@ -61,8 +61,8 @@ of what recently changed. Ask things like *"how did we do X last time?"* and the
 >
 > Every path and port derives from those two variables. See [Configuration](#configuration).
 
-Beyond Claude Code, claude-mem-pro also runs on **OpenClaw gateways** (Hermes support
-is planned) — see [Integrations](#integrations).
+Beyond Claude Code, claude-mem-pro also runs on **OpenClaw gateways** and **Hermes** —
+see [Integrations](#integrations).
 
 ---
 
@@ -201,13 +201,21 @@ configuration, worker startup, and optional feed wiring — interactively. See
 > installs **upstream claude-mem**, not this fork. Use the fork's `openclaw/install.sh`
 > above to deploy claude-mem-pro.
 
-### Hermes 🛣️ (planned)
+### Hermes ✅
 
-[Hermes](https://github.com/NousResearch/hermes) agents can consume external MCP
-servers, so wiring claude-mem-pro's MCP search/recall surface into a Hermes
-`mcp_servers` config is the natural first step. A dedicated Hermes capture adapter
-(the write side, analogous to the OpenClaw plugin) is **planned, not yet shipped** —
-track it on the roadmap.
+claude-mem-pro ships a bundled [Hermes](https://github.com/NousResearch/hermes)
+plugin (`hermes/`). It captures tool calls from Hermes runs, injects a recent-
+mutation digest into each new turn (via the `pre_llm_call` hook, preserving the
+prompt cache), and adds a `mem_recall` search tool — all talking to the same
+worker, best-effort so it never blocks the agent.
+
+```bash
+git clone https://github.com/cafesean/claude-mem.git
+cd claude-mem && npm run build
+bash hermes/install.sh
+```
+
+See `hermes/SKILL.md` for config and the full hook map.
 
 ---
 
