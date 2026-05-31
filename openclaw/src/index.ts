@@ -587,6 +587,16 @@ export default function claudeMemPlugin(api: OpenClawPluginApi): void {
     return baseProjectName;
   }
 
+  // The worker derives a record's project from basename(cwd). Send a synthetic
+  // cwd whose basename is our project so captured observations land under the
+  // SAME project the inject/recall path queries — otherwise the worker scopes
+  // by the agent's workspace dir (or '' for chat agents) and cross-session
+  // recall misses. Path is non-existent under a private namespace so the
+  // worker's git-worktree detection never misfires on a real repo ancestor.
+  function projectCwd(project: string): string {
+    return `/openclaw-projects/${project}`;
+  }
+
   const sessionIds = new Map<string, string>();
   const canonicalSessionKeys = new Map<string, string>();
   const sessionAliasesByCanonicalKey = new Map<string, Set<string>>();
@@ -729,6 +739,7 @@ export default function claudeMemPlugin(api: OpenClawPluginApi): void {
       contentSessionId,
       project: projectName,
       prompt: promptText,
+      cwd: projectCwd(projectName),
     }, api.logger);
 
     api.logger.info(`[claude-mem] Session initialized via before_agent_start: contentSessionId=${contentSessionId} project=${projectName}`);
@@ -767,19 +778,17 @@ export default function claudeMemPlugin(api: OpenClawPluginApi): void {
       toolResponseText = toolResponseText.slice(0, MAX_TOOL_RESPONSE_LENGTH);
     }
 
-    const workspaceDir = ctx.workspaceDir;
-
-    if (!workspaceDir) {
-      api.logger.warn(`[claude-mem] Skipping observation persist because workspaceDir is unavailable: session=${canonicalKey} tool=${toolName}`);
-      return;
-    }
+    // Scope the capture under our project (via synthetic cwd) regardless of
+    // whether the agent has a workspace dir — chat agents (e.g. Telegram bots)
+    // have none, and we want their tool calls captured + recallable too.
+    const projectName = getProjectName(ctx);
 
     workerPostFireAndForget(workerPort, "/api/sessions/observations", {
       contentSessionId,
       tool_name: toolName,
       tool_input: event.params || {},
       tool_response: toolResponseText,
-      cwd: workspaceDir,
+      cwd: projectCwd(projectName),
     }, api.logger);
   });
 
