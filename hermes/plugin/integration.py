@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 
 MAX_RESPONSE_CHARS = 1000
 
+# Hermes uses its own tool vocabulary; the worker's mutation classifier speaks
+# Claude Code's (Write/Edit/Bash + mcp__* tools). Map Hermes native tool names
+# to the equivalents the classifier recognizes so Hermes mutations are captured.
+# The input keys already line up: write_file/patch use `path`, terminal uses
+# `command` — exactly what the worker's extractPath/isMutatingBash read.
+# Unknown names (e.g. mcp__* tools) pass through unchanged.
+_HERMES_TOOL_NAME_MAP = {
+    "write_file": "Write",
+    "patch": "Edit",
+    "terminal": "Bash",
+}
+
 MEM_RECALL_SCHEMA = {
     "name": "mem_recall",
     "description": (
@@ -79,7 +91,8 @@ class Integration:
         resp = result if isinstance(result, str) else str(result)
         resp = resp[:MAX_RESPONSE_CHARS]
         tool_input = dict(args) if isinstance(args, dict) else {}
-        self._submit(lambda: self._client.observe(csid, tool_name, tool_input, resp))
+        worker_tool = _HERMES_TOOL_NAME_MAP.get(tool_name, tool_name)
+        self._submit(lambda: self._client.observe(csid, worker_tool, tool_input, resp))
 
     def post_llm_call(self, session_id: str = "", assistant_response: str = "", **_: Any) -> None:
         if assistant_response:

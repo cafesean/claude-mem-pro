@@ -40,8 +40,27 @@ def test_post_tool_call_records_and_truncates():
     big = "x" * 5000
     integ.post_tool_call(tool_name="write_file", args={"path": "/a"}, result=big, session_id="s1")
     csid, name, tin, tresp, cwd = fake.observes[0]
-    assert csid == "hermes-s1" and name == "write_file" and tin == {"path": "/a"}
+    # write_file is normalized to the worker's vocabulary ("Write"); input passes through
+    assert csid == "hermes-s1" and name == "Write" and tin == {"path": "/a"}
     assert len(tresp) == integration.MAX_RESPONSE_CHARS
+
+
+def test_post_tool_call_normalizes_hermes_tool_names():
+    integ, fake = make_integration()
+    integ.post_tool_call(tool_name="write_file", args={"path": "/repo/a.py"}, result="ok", session_id="s1")
+    integ.post_tool_call(tool_name="terminal", args={"command": "git commit -m x"}, result="ok", session_id="s1")
+    integ.post_tool_call(tool_name="patch", args={"path": "/repo/b.py"}, result="ok", session_id="s1")
+    names = [o[1] for o in fake.observes]
+    assert names == ["Write", "Bash", "Edit"]
+    # inputs pass through unchanged so the worker's path/command extraction works
+    assert fake.observes[0][2] == {"path": "/repo/a.py"}
+    assert fake.observes[1][2] == {"command": "git commit -m x"}
+
+
+def test_post_tool_call_passes_unknown_tool_names_through():
+    integ, fake = make_integration()
+    integ.post_tool_call(tool_name="mcp__notion__create-page", args={"x": 1}, result="ok", session_id="s1")
+    assert fake.observes[0][1] == "mcp__notion__create-page"
 
 
 def test_post_tool_call_skips_own_tools():
