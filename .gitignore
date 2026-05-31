@@ -49,3 +49,7 @@ logs/run_evaluation/
 .docker-blowout-data/
 .scratch/
 docker/install-test/
+
+# Python
+__pycache__/
+*.pyc

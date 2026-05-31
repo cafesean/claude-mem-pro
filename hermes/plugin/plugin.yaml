@@ -1,0 +1,13 @@
+name: claude-mem-pro
+version: 13.3.0
+description: "Persistent cross-session memory via the claude-mem-pro worker. Captures durable changes from Hermes runs, injects a recent-mutation digest into new turns, and exposes a mem_recall search tool. Talks to the worker over HTTP; best-effort and never blocks the agent."
+author: "cafesean (claude-mem-pro), forked from thedotmack/claude-mem"
+kind: standalone
+provides_tools:
+  - mem_recall
+hooks:
+  - on_session_start
+  - pre_llm_call
+  - post_tool_call
+  - post_llm_call
+  - on_session_end
