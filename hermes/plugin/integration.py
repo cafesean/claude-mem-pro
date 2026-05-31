@@ -78,7 +78,7 @@ class Integration:
         csid = content_session_id(session_id)
         resp = result if isinstance(result, str) else str(result)
         resp = resp[:MAX_RESPONSE_CHARS]
-        tool_input = args if isinstance(args, dict) else {}
+        tool_input = dict(args) if isinstance(args, dict) else {}
         self._submit(lambda: self._client.observe(csid, tool_name, tool_input, resp))
 
     def post_llm_call(self, session_id: str = "", assistant_response: str = "", **_: Any) -> None:
