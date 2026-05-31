@@ -32,3 +32,16 @@ def resolve_config(hermes_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 def content_session_id(session_id: str) -> str:
     return f"hermes-{session_id}" if session_id else "hermes-unknown"
+
+
+def worker_cwd(project: str) -> str:
+    """Synthetic cwd whose basename equals ``project``.
+
+    The worker derives a mutation's project from ``basename(cwd)`` (it has no
+    explicit project param). Hermes agents have no codebase cwd, so we declare
+    the scope by sending this path on init + observe — capture then lands under
+    ``project`` and matches what the inject/recall path queries. The path is
+    intentionally non-existent under a private namespace so the worker's
+    git-worktree detection never misfires on a real repo ancestor.
+    """
+    return f"/hermes-projects/{project}"

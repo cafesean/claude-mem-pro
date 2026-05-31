@@ -43,6 +43,9 @@ fi
 log "Installing plugin to ${PLUGIN_DST}"
 mkdir -p "${PLUGIN_DST}"
 cp -R "${SCRIPT_DIR}/plugin/." "${PLUGIN_DST}/"
+# Never ship compiled bytecode — stale/cross-version .pyc can shadow updated
+# source and make the running plugin load old code. Let Python recompile.
+find "${PLUGIN_DST}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
 # 5. enable it (best-effort; user can also add to config)
 if command -v hermes >/dev/null 2>&1; then

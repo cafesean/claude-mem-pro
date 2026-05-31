@@ -10,7 +10,7 @@ import logging
 import threading
 from typing import Any, Callable, Dict, Optional
 
-from .config import content_session_id
+from .config import content_session_id, worker_cwd
 from .worker_client import WorkerClient
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ class Integration:
                  submit: Callable[[Callable[[], None]], None] = _default_submit):
         self._client = client
         self._project = project
+        self._cwd = worker_cwd(project)  # makes the worker scope mutations under `project`
         self._submit = submit
         self._inited: set[str] = set()
         self._last_response: Dict[str, str] = {}
@@ -79,7 +80,7 @@ class Integration:
                 self._inited.add(session_id)
         if need_init:
             prompt = user_message  # captured by value before lambda closes over it
-            self._submit(lambda: self._client.init(csid, prompt))
+            self._submit(lambda: self._client.init(csid, prompt, cwd=self._cwd))
         digest = self._client.context(self._projects())
         return {"context": digest} if digest else None
 
@@ -92,7 +93,7 @@ class Integration:
         resp = resp[:MAX_RESPONSE_CHARS]
         tool_input = dict(args) if isinstance(args, dict) else {}
         worker_tool = _HERMES_TOOL_NAME_MAP.get(tool_name, tool_name)
-        self._submit(lambda: self._client.observe(csid, worker_tool, tool_input, resp))
+        self._submit(lambda: self._client.observe(csid, worker_tool, tool_input, resp, cwd=self._cwd))
 
     def post_llm_call(self, session_id: str = "", assistant_response: str = "", **_: Any) -> None:
         if assistant_response:
@@ -113,5 +114,5 @@ class Integration:
         if not query:
             return "mem_recall: 'query' is required."
         limit = int((args or {}).get("limit") or 10)
-        result = self._client.search(query, limit=limit)
+        result = self._client.search(query, limit=limit, project=self._project)
         return result or "No matching memory found (or memory worker unavailable)."

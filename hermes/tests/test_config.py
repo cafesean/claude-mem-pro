@@ -36,3 +36,9 @@ def test_config_block_used_when_no_env(monkeypatch):
 def test_content_session_id():
     assert config.content_session_id("abc") == "hermes-abc"
     assert config.content_session_id("") == "hermes-unknown"
+
+
+def test_worker_cwd_basename_is_project():
+    import os
+    assert os.path.basename(config.worker_cwd("hermes")) == "hermes"
+    assert os.path.basename(config.worker_cwd("myproj")) == "myproj"

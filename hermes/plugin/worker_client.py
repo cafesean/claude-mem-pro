@@ -81,11 +81,12 @@ class WorkerClient:
         return None
 
     # --- write path ---
-    def init(self, content_session_id: str, prompt: str = "") -> None:
+    def init(self, content_session_id: str, prompt: str = "", cwd: str = "") -> None:
         self._call("POST", "/api/sessions/init", {
             "contentSessionId": content_session_id,
             "project": self.project,
             "prompt": prompt,
+            "cwd": cwd,
         })
 
     def observe(self, content_session_id: str, tool_name: str, tool_input: Any,
@@ -110,6 +111,9 @@ class WorkerClient:
         text = self._call("GET", f"/api/context/inject?projects={quote(csv)}")
         return (text or "").strip()
 
-    def search(self, query: str, limit: int = 10) -> str:
-        text = self._call("GET", f"/api/search/observations?query={quote(query)}&limit={int(limit)}")
+    def search(self, query: str, limit: int = 10, project: str = "") -> str:
+        path = f"/api/search/observations?query={quote(query)}&limit={int(limit)}"
+        if project:
+            path += f"&project={quote(project)}"
+        text = self._call("GET", path)
         return text or ""

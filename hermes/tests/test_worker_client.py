@@ -37,7 +37,7 @@ def test_init_posts_expected_payload():
     method, url, body, _ = calls[0]
     assert method == "POST"
     assert url.endswith("/api/sessions/init")
-    assert body == {"contentSessionId": "hermes-x", "project": "proj", "prompt": "hello"}
+    assert body == {"contentSessionId": "hermes-x", "project": "proj", "prompt": "hello", "cwd": ""}
 
 
 def test_observe_posts_expected_payload():

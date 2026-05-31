@@ -3,15 +3,17 @@ from hermes.plugin import integration
 
 class FakeClient:
     def __init__(self):
-        self.inits = []; self.observes = []; self.summaries = []
+        self.inits = []; self.observes = []; self.summaries = []; self.searches = []
         self.context_return = "DIGEST"
         self.search_return = "RESULTS"
-    def init(self, csid, prompt=""): self.inits.append((csid, prompt))
+    def init(self, csid, prompt="", cwd=""): self.inits.append((csid, prompt))
     def observe(self, csid, tool_name, tool_input, tool_response, cwd=""):
         self.observes.append((csid, tool_name, tool_input, tool_response, cwd))
     def summarize(self, csid, msg): self.summaries.append((csid, msg))
     def context(self, projects): return self.context_return
-    def search(self, query, limit=10): return self.search_return
+    def search(self, query, limit=10, project=""):
+        self.searches.append((query, limit, project))
+        return self.search_return
 
 
 def make_integration():
@@ -63,6 +65,15 @@ def test_post_tool_call_passes_unknown_tool_names_through():
     assert fake.observes[0][1] == "mcp__notion__create-page"
 
 
+def test_observe_sends_project_scoping_cwd():
+    # The worker derives project from basename(cwd); we send a synthetic cwd so
+    # captured mutations land under the configured project ("hermes").
+    integ, fake = make_integration()
+    integ.post_tool_call(tool_name="write_file", args={"path": "/a"}, result="ok", session_id="s1")
+    cwd = fake.observes[0][4]
+    assert cwd == "/hermes-projects/hermes"
+
+
 def test_post_tool_call_skips_own_tools():
     integ, fake = make_integration()
     integ.post_tool_call(tool_name="mem_recall", args={}, result="x", session_id="s1")
@@ -88,5 +99,7 @@ def test_mem_recall_tool_handler():
     integ, fake = make_integration()
     out = integ.mem_recall({"query": "auth bug", "limit": 5})
     assert out == "RESULTS"
+    # recall is project-scoped so a Hermes agent finds its own memory, not the global corpus
+    assert fake.searches[0] == ("auth bug", 5, "hermes")
     out_empty = integ.mem_recall({"query": ""})
     assert "query" in out_empty.lower()
