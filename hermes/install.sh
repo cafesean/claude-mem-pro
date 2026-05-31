@@ -31,7 +31,7 @@ if curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
   log "Worker already healthy on port ${PORT}."
 else
   log "Starting claude-mem-pro worker on port ${PORT}…"
-  nohup bun "${REPO_ROOT}/plugin/scripts/worker-service.cjs" start >>"${HERMES_HOME}/claude-mem-pro-worker.log" 2>&1 &
+  CLAUDE_MEM_WORKER_PORT="${PORT}" nohup bun "${REPO_ROOT}/plugin/scripts/worker-service.cjs" start >>"${HERMES_HOME}/claude-mem-pro-worker.log" 2>&1 &
   for _ in $(seq 1 30); do
     curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 && break
     sleep 1
