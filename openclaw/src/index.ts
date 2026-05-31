@@ -179,8 +179,18 @@ interface ClaudeMemPluginConfig {
   };
 }
 
-const MAX_SSE_BUFFER_SIZE = 1024 * 1024; 
-const DEFAULT_WORKER_PORT = 37777;
+const MAX_SSE_BUFFER_SIZE = 1024 * 1024;
+// claude-mem-pro's worker listens on a per-user port (37700 + uid%100),
+// overridable via CLAUDE_MEM_WORKER_PORT. Derive the same default here so the
+// plugin reaches the worker out of the box; explicit pluginConfig.workerPort
+// still wins. (The legacy fixed 37777 only worked when uid%100 === 77.)
+function defaultWorkerPort(): number {
+  const env = Number(process.env.CLAUDE_MEM_WORKER_PORT);
+  if (Number.isFinite(env) && env > 0) return env;
+  const uid = typeof process.getuid === "function" ? process.getuid() : 77;
+  return 37700 + (uid % 100);
+}
+const DEFAULT_WORKER_PORT = defaultWorkerPort();
 const DEFAULT_WORKER_HOST = "127.0.0.1";
 
 const EMOJI_POOL = [
