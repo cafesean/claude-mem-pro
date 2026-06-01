@@ -67,6 +67,11 @@ function injectMode(): 'mutations' | 'legacy' {
   return process.env.CLAUDE_MEM_INJECT_MODE === 'legacy' ? 'legacy' : 'mutations';
 }
 
+/** Guard against NaN from a malformed setting — fall back to a sane default. */
+function finiteOr(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function buildContextOutput(
   project: string,
   observations: Observation[],
@@ -85,7 +90,12 @@ function buildContextOutput(
     // a recall pointer. Skips the noisy observation/summary index AND the
     // legacy token-economics header (meaningless for the digest).
     output.push(`# [${project}] recent context, ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`, '');
-    const digest = renderMutationDigest(db.db as never, projects);
+    const digest = renderMutationDigest(db.db as never, projects, {
+      group: config.digestGroup,
+      windowDays: finiteOr(config.digestWindowDays, 7),
+      maxBlocks: finiteOr(config.digestMaxBlocks, 10),
+      filesPerBlock: finiteOr(config.digestFilesPerBlock, 4),
+    });
     if (digest.length > 0) {
       output.push(...digest);
     } else {

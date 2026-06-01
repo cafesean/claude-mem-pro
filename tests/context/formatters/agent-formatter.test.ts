@@ -89,6 +89,10 @@ function createTestConfig(overrides: Partial<ContextConfig> = {}): ContextConfig
     fullObservationField: 'narrative',
     showLastSummary: true,
     showLastMessage: true,
+    digestGroup: 'session',
+    digestWindowDays: 7,
+    digestMaxBlocks: 10,
+    digestFilesPerBlock: 4,
     ...overrides,
   };
 }

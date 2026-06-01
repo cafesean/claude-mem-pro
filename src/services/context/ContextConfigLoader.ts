@@ -25,5 +25,13 @@ export function loadContextConfig(): ContextConfig {
     fullObservationField: settings.CLAUDE_MEM_CONTEXT_FULL_FIELD as 'narrative' | 'facts',
     showLastSummary: settings.CLAUDE_MEM_CONTEXT_SHOW_LAST_SUMMARY === 'true',
     showLastMessage: settings.CLAUDE_MEM_CONTEXT_SHOW_LAST_MESSAGE === 'true',
+    digestGroup: normalizeDigestGroup(settings.CLAUDE_MEM_DIGEST_GROUP),
+    digestWindowDays: parseInt(settings.CLAUDE_MEM_DIGEST_WINDOW_DAYS, 10),
+    digestMaxBlocks: parseInt(settings.CLAUDE_MEM_DIGEST_MAX_BLOCKS, 10),
+    digestFilesPerBlock: parseInt(settings.CLAUDE_MEM_DIGEST_FILES_PER_BLOCK, 10),
   };
+}
+
+function normalizeDigestGroup(value: string | undefined): 'session' | 'topic' | 'flat' {
+  return value === 'topic' || value === 'flat' ? value : 'session';
 }

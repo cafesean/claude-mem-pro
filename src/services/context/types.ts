@@ -26,6 +26,12 @@ export interface ContextConfig {
   fullObservationField: 'narrative' | 'facts';
   showLastSummary: boolean;
   showLastMessage: boolean;
+
+  // Mutation-digest (SessionStart injection) controls.
+  digestGroup: 'session' | 'topic' | 'flat';
+  digestWindowDays: number;
+  digestMaxBlocks: number;
+  digestFilesPerBlock: number;
 }
 
 export interface Observation {
