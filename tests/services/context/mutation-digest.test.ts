@@ -86,6 +86,41 @@ describe('renderMutationDigest — session grouping (default)', () => {
   });
 });
 
+function seedWithDescriptions(): Database {
+  const db = seed();
+  // bridge + summary tables (as created elsewhere in the app)
+  db.run(`CREATE TABLE sdk_sessions (content_session_id TEXT, memory_session_id TEXT, custom_title TEXT, user_prompt TEXT)`);
+  db.run(`CREATE TABLE session_summaries (memory_session_id TEXT, request TEXT, completed TEXT, created_at_epoch INTEGER)`);
+  // Session A (klaviyo) → has an LLM summary
+  db.run(`INSERT INTO sdk_sessions VALUES ('sess-a','mem-a',NULL,'/recall Let''s continue testing klaviyo audience sync')`);
+  db.run(`INSERT INTO session_summaries VALUES ('mem-a',NULL,'Fixed 11 blockers: OAuth Bearer auth, segments:write scope, profile-metric shapes',${t('2026-06-01T11:00:00Z')})`);
+  // Session B (spec) → opening prompt with stacked slash-commands + agent mention to strip
+  db.run(`INSERT INTO sdk_sessions VALUES ('sess-b','mem-b',NULL,'@"platform-dev:dev (agent)" /session-start /yobo resume backoffice connectors spec work')`);
+  // Session C → curated custom_title wins
+  db.run(`INSERT INTO sdk_sessions VALUES ('sess-c','mem-c','Refactor cadra-web auth flow','whatever')`);
+  return db;
+}
+
+describe('renderMutationDigest — session descriptions (enrichment)', () => {
+  it('leads with the LLM summary / cleaned prompt / custom title when available', () => {
+    const out = renderMutationDigest(seedWithDescriptions() as never, ['monorepo'], { nowEpoch: NOW }).join('\n');
+    // summary used as the headline, topic kept as a prefix
+    expect(out).toContain('- yobo/klaviyo-sync-orchestration: Fixed 11 blockers: OAuth Bearer auth, segments:write scope, profile-metric shapes');
+    // opening prompt cleaned of @mention + slash-command
+    expect(out).toContain('- _specs/p26-backoffice-connectors: resume backoffice connectors spec work');
+    // custom_title wins for session C
+    expect(out).toContain('- cadra-web: Refactor cadra-web auth flow');
+    // counts/files move to the detail line
+    expect(out).toContain('13 changes (commit, edit) ·');
+  });
+
+  it('can be disabled with describe:false (falls back to topic labels)', () => {
+    const out = renderMutationDigest(seedWithDescriptions() as never, ['monorepo'], { nowEpoch: NOW, describe: false }).join('\n');
+    expect(out).not.toContain('Fixed 11 blockers');
+    expect(out).toContain('- yobo/klaviyo-sync-orchestration — 13 changes');
+  });
+});
+
 describe('renderMutationDigest — topic grouping', () => {
   it('rolls up across sessions into area blocks', () => {
     const out = renderMutationDigest(seed() as never, ['monorepo'], { nowEpoch: NOW, group: 'topic' }).join('\n');

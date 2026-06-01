@@ -32,6 +32,13 @@ export interface DigestConfig {
   filesPerBlock: number;
   /** Upper bound on rows scanned from the table before grouping. Default 2000. */
   scanLimit: number;
+  /**
+   * Enrich each session block with a human description (the session's curated
+   * title / LLM summary / opening prompt) instead of just the path topic.
+   * Joins sdk_sessions + session_summaries; degrades to the topic label if
+   * those tables are absent or empty. Default true. Only affects 'session' mode.
+   */
+  describe: boolean;
   /** Override "now" (epoch ms) for the time window — testing/determinism. */
   nowEpoch?: number;
 }
@@ -42,6 +49,7 @@ export const DEFAULT_DIGEST_CONFIG: DigestConfig = {
   maxBlocks: 10,
   filesPerBlock: 4,
   scanLimit: 2000,
+  describe: true,
 };
 
 interface MutationDigestRow {
@@ -54,6 +62,14 @@ interface MutationDigestRow {
 
 interface DbLike {
   prepare(sql: string): { all(...p: unknown[]): unknown[] };
+}
+
+interface SessionDescRow {
+  csid: string;
+  custom_title: string | null;
+  user_prompt: string | null;
+  completed: string | null;
+  request: string | null;
 }
 
 /** Shorten a target path/string for one-line display. */
@@ -209,6 +225,75 @@ function fetchRows(db: DbLike, projects: string[], cfg: DigestConfig): MutationD
     .all(...params) as MutationDigestRow[];
 }
 
+/** Collapse to one line and truncate for a headline description. */
+function shortDesc(s: string, max = 100): string {
+  const t = s.replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + '…' : t;
+}
+
+/**
+ * Clean a raw opening user prompt into a usable description: drop a leading
+ * slash-command, agent @mention(s), and injected recall/context noise.
+ */
+function cleanPrompt(prompt: string): string {
+  let p = prompt.split('\n')[0]; // first line is the actual ask
+  // strip stacked leading prefixes, e.g. "/session-start /yobo …" or `@"agent" /cadra …`
+  let prev: string;
+  do {
+    prev = p;
+    p = p
+      .replace(/^@"[^"]*"\s*/, '') // @"agent (name)"
+      .replace(/^@\S+\s+/, '') // @agent
+      .replace(/^\/[a-z0-9:_-]+\s+/i, '') // /recall, /session-start, /yobo …
+      .trimStart();
+  } while (p !== prev);
+  return p.trim();
+}
+
+/**
+ * Best human description per session, keyed by content_session_id. Joins the
+ * sdk_sessions bridge to session_summaries. Returns an empty map (graceful
+ * fallback to topic labels) if those tables don't exist or nothing matches.
+ */
+function fetchDescriptions(db: DbLike, csids: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  if (csids.length === 0) return out;
+  const placeholders = csids.map(() => '?').join(',');
+  try {
+    const rows = db
+      .prepare(
+        `SELECT sk.content_session_id AS csid,
+                sk.custom_title AS custom_title,
+                sk.user_prompt  AS user_prompt,
+                (SELECT ss.completed FROM session_summaries ss
+                   WHERE ss.memory_session_id = sk.memory_session_id
+                     AND ss.completed IS NOT NULL
+                   ORDER BY ss.created_at_epoch DESC LIMIT 1) AS completed,
+                (SELECT ss.request FROM session_summaries ss
+                   WHERE ss.memory_session_id = sk.memory_session_id
+                     AND ss.request IS NOT NULL
+                   ORDER BY ss.created_at_epoch DESC LIMIT 1) AS request
+         FROM sdk_sessions sk
+         WHERE sk.content_session_id IN (${placeholders})`,
+      )
+      .all(...csids) as SessionDescRow[];
+    for (const r of rows) {
+      const raw =
+        (r.custom_title && r.custom_title.trim()) ||
+        (r.completed && r.completed.trim()) ||
+        (r.request && r.request.trim()) ||
+        (r.user_prompt && r.user_prompt.trim()) ||
+        '';
+      // cleanPrompt strips a leading slash-command / @mention and takes the
+      // first line — harmless on real summaries, essential on verbatim prompts.
+      if (raw) out.set(r.csid, shortDesc(cleanPrompt(raw)));
+    }
+  } catch {
+    // sdk_sessions / session_summaries not present (older DB) — fall back silently.
+  }
+  return out;
+}
+
 /** Legacy flat list: one line per (verb, target), grouped by day, deduped per day. */
 function renderFlat(rows: MutationDigestRow[], cfg: DigestConfig): string[] {
   const out: string[] = ['## Recent changes (durable mutations)', ''];
@@ -236,7 +321,7 @@ function renderFlat(rows: MutationDigestRow[], cfg: DigestConfig): string[] {
 }
 
 /** One block per session, grouped under the day of its latest mutation. */
-function renderBySession(rows: MutationDigestRow[], cfg: DigestConfig): string[] {
+function renderBySession(db: DbLike, rows: MutationDigestRow[], cfg: DigestConfig): string[] {
   // group rows by session, preserving newest-first order
   const bySession = new Map<string, MutationDigestRow[]>();
   for (const r of rows) {
@@ -247,13 +332,18 @@ function renderBySession(rows: MutationDigestRow[], cfg: DigestConfig): string[]
 
   // each session: latest epoch + its rows, ordered newest-first
   const sessions = [...bySession.values()]
-    .map((rs) => ({ rs, latest: rs[0].created_at_epoch }))
+    .map((rs) => ({ csid: rs[0].content_session_id, rs, latest: rs[0].created_at_epoch }))
     .sort((a, b) => b.latest - a.latest)
     .slice(0, cfg.maxBlocks);
 
+  // human descriptions for just the sessions we'll show (empty if unavailable)
+  const descriptions = cfg.describe
+    ? fetchDescriptions(db, sessions.map((s) => s.csid))
+    : new Map<string, string>();
+
   const out: string[] = ['## Recent work (by session)', ''];
   let currentDay = '';
-  for (const { rs, latest } of sessions) {
+  for (const { csid, rs, latest } of sessions) {
     const day = dayLabel(latest);
     if (day !== currentDay) {
       out.push(`### ${day}`);
@@ -262,11 +352,21 @@ function renderBySession(rows: MutationDigestRow[], cfg: DigestConfig): string[]
     const { label, otherAreas } = dominantTopic(rs);
     const verbs = uniqueVerbs(rs).join(', ');
     const areas = otherAreas > 0 ? ` +${otherAreas} area${otherAreas > 1 ? 's' : ''}` : '';
-    out.push(`- ${label} — ${rs.length} change${rs.length > 1 ? 's' : ''} (${verbs})${areas}`);
+    const changes = `${rs.length} change${rs.length > 1 ? 's' : ''} (${verbs})${areas}`;
     const { shown, extra } = sampleFiles(rs, cfg.filesPerBlock);
-    if (shown.length > 0) {
-      const more = extra > 0 ? ` +${extra} more` : '';
-      out.push(`  ${shown.join(', ')}${more}`);
+    const more = extra > 0 ? ` +${extra} more` : '';
+    const files = shown.length > 0 ? shown.join(', ') + more : '';
+
+    const desc = descriptions.get(csid);
+    if (desc) {
+      // lead with the human description; topic + counts + files become detail
+      out.push(`- ${label}: ${desc}`);
+      const detail = files ? `${changes} · ${files}` : changes;
+      out.push(`  ${detail}`);
+    } else {
+      // no description available — fall back to the topic-label headline
+      out.push(`- ${label} — ${changes}`);
+      if (files) out.push(`  ${files}`);
     }
   }
   out.push('');
@@ -332,6 +432,6 @@ export function renderMutationDigest(
       return renderByTopic(rows, config);
     case 'session':
     default:
-      return renderBySession(rows, config);
+      return renderBySession(db, rows, config);
   }
 }

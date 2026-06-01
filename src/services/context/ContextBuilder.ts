@@ -95,6 +95,7 @@ function buildContextOutput(
       windowDays: finiteOr(config.digestWindowDays, 7),
       maxBlocks: finiteOr(config.digestMaxBlocks, 10),
       filesPerBlock: finiteOr(config.digestFilesPerBlock, 4),
+      describe: config.digestDescribe,
     });
     if (digest.length > 0) {
       output.push(...digest);

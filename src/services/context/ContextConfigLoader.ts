@@ -29,6 +29,7 @@ export function loadContextConfig(): ContextConfig {
     digestWindowDays: parseInt(settings.CLAUDE_MEM_DIGEST_WINDOW_DAYS, 10),
     digestMaxBlocks: parseInt(settings.CLAUDE_MEM_DIGEST_MAX_BLOCKS, 10),
     digestFilesPerBlock: parseInt(settings.CLAUDE_MEM_DIGEST_FILES_PER_BLOCK, 10),
+    digestDescribe: settings.CLAUDE_MEM_DIGEST_DESCRIBE !== 'false',
   };
 }
 

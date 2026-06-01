@@ -93,6 +93,7 @@ function createTestConfig(overrides: Partial<ContextConfig> = {}): ContextConfig
     digestWindowDays: 7,
     digestMaxBlocks: 10,
     digestFilesPerBlock: 4,
+    digestDescribe: true,
     ...overrides,
   };
 }

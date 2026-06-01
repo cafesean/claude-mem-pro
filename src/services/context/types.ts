@@ -32,6 +32,7 @@ export interface ContextConfig {
   digestWindowDays: number;
   digestMaxBlocks: number;
   digestFilesPerBlock: number;
+  digestDescribe: boolean;
 }
 
 export interface Observation {
