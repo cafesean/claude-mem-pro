@@ -49,6 +49,14 @@ describe('classifyToolCall — Bash', () => {
     expect(classifyToolCall({ toolName: 'Bash', input: { command: 'ls -la' } })).toBe('skip');
     expect(classifyToolCall({ toolName: 'Bash', input: { command: 'cat /tmp/x.txt' } })).toBe('skip');
   });
+  it('requires the git verb to LEAD a segment (no heredoc/echo false positives)', () => {
+    // "git commit" only inside a heredoc body / echoed string → not a mutation
+    expect(classifyToolCall({ toolName: 'Bash', input: { command: `cat <<'EOF'\nhow to git commit\nEOF` } })).toBe('skip');
+    expect(classifyToolCall({ toolName: 'Bash', input: { command: 'echo "remember to git push"' } })).toBe('skip');
+    // but a real leading commit, even chained or with env prefix, still captures
+    expect(classifyToolCall({ toolName: 'Bash', input: { command: 'cd repo && git commit -m "x"' } })).toBe('capture');
+    expect(classifyToolCall({ toolName: 'Bash', input: { command: 'GIT_AUTHOR_NAME=x git push' } })).toBe('capture');
+  });
 });
 
 describe('classifyToolCall — external MCP mutations', () => {

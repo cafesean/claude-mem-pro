@@ -98,6 +98,8 @@ function seedWithDescriptions(): Database {
   db.run(`INSERT INTO sdk_sessions VALUES ('sess-b','mem-b',NULL,'@"platform-dev:dev (agent)" /session-start /yobo resume backoffice connectors spec work')`);
   // Session C → curated custom_title wins
   db.run(`INSERT INTO sdk_sessions VALUES ('sess-c','mem-c','Refactor cadra-web auth flow','whatever')`);
+  // Session A also has a LATER, trivial summary — must NOT win over the real request
+  db.run(`INSERT INTO session_summaries VALUES ('mem-a','Continue klaviyo audience sync testing','Trivial request completed — wrote noop',${t('2026-06-01T11:30:00Z')})`);
   return db;
 }
 

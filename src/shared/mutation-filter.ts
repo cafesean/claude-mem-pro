@@ -78,8 +78,13 @@ function extractPath(input?: Record<string, unknown> | null): string | null {
 function isMutatingBash(input?: Record<string, unknown> | null): boolean {
   const cmd = input && typeof input.command === 'string' ? input.command : '';
   if (!cmd) return false;
-  // git commit / git push / git tag = durable. git status/log/diff = read.
-  return /\bgit\s+(commit|push|tag|merge)\b/.test(cmd);
+  // Require the git mutation to LEAD a command segment — not merely appear
+  // somewhere (e.g. inside a heredoc body, an echo'd string, or a comment).
+  // Split on statement separators; allow leading env-assignments / sudo.
+  // git commit / git push / git tag / git merge = durable; status/log/diff = read.
+  return cmd
+    .split(/&&|\|\||[;\n|]/)
+    .some((seg) => /^\s*(?:sudo\s+|\w+=\S+\s+)*git\s+(commit|push|tag|merge)\b/.test(seg));
 }
 
 /**

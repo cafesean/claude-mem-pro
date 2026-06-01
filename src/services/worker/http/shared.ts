@@ -36,7 +36,13 @@ function mutationTarget(input: unknown): string | null {
     // For git commits, capture the message SUBJECT only (first -m value, first
     // line) — not the whole multi-line command, which pollutes the digest.
     const m = cmd.match(/git\s+commit\b[^]*?-m\s+(["'])([^]*?)\1/);
-    if (m) return m[2].split('\n')[0].slice(0, 120);
+    if (m) {
+      const subject = m[2].split('\n')[0].slice(0, 120);
+      // A message built via shell substitution/heredoc (e.g. -m "$(cat <<'EOF'")
+      // yields junk like "$(cat <<'EOF'"; fall back to a clean generic label.
+      if (/\$\(|<<|`/.test(subject)) return 'git commit';
+      return subject;
+    }
     const verb = cmd.match(/\bgit\s+(push|tag|merge)\b/);
     if (verb) return `git ${verb[1]}`;
     return cmd.split('\n')[0].slice(0, 120);

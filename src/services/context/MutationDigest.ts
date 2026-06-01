@@ -260,6 +260,9 @@ function fetchDescriptions(db: DbLike, csids: string[]): Map<string, string> {
   if (csids.length === 0) return out;
   const placeholders = csids.map(() => '?').join(',');
   try {
+    // Prefer the latest SUBSTANTIVE completed (filter trivial tails like "noop"
+    // in SQL, so an earlier real accomplishment isn't shadowed by a later
+    // throwaway summary). Keep latest request + latest completed as fallbacks.
     const rows = db
       .prepare(
         `SELECT sk.content_session_id AS csid,
@@ -268,6 +271,9 @@ function fetchDescriptions(db: DbLike, csids: string[]): Map<string, string> {
                 (SELECT ss.completed FROM session_summaries ss
                    WHERE ss.memory_session_id = sk.memory_session_id
                      AND ss.completed IS NOT NULL
+                     AND length(trim(ss.completed)) >= 25
+                     AND lower(ss.completed) NOT LIKE '%noop%'
+                     AND lower(ss.completed) NOT LIKE '%trivial%'
                    ORDER BY ss.created_at_epoch DESC LIMIT 1) AS completed,
                 (SELECT ss.request FROM session_summaries ss
                    WHERE ss.memory_session_id = sk.memory_session_id
@@ -278,12 +284,12 @@ function fetchDescriptions(db: DbLike, csids: string[]): Map<string, string> {
       )
       .all(...csids) as SessionDescRow[];
     for (const r of rows) {
+      // completed here is already substantive (trivial ones filtered in SQL).
       const raw =
-        (r.custom_title && r.custom_title.trim()) ||
-        (r.completed && r.completed.trim()) ||
-        (r.request && r.request.trim()) ||
-        (r.user_prompt && r.user_prompt.trim()) ||
-        '';
+        (r.custom_title?.trim() || '') ||
+        (r.completed?.trim() || '') ||
+        (r.request?.trim() || '') ||
+        (r.user_prompt?.trim() || '');
       // cleanPrompt strips a leading slash-command / @mention and takes the
       // first line — harmless on real summaries, essential on verbatim prompts.
       if (raw) out.set(r.csid, shortDesc(cleanPrompt(raw)));
