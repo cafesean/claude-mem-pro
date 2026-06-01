@@ -42,7 +42,7 @@ files) rather than a separate, ever-staling index.
 claude-mem-pro installs as a Claude Code plugin from the `cafesean` marketplace:
 
 ```text
-/plugin marketplace add cafesean/claude-mem
+/plugin marketplace add cafesean/claude-mem-pro
 /plugin install claude-mem-pro@cafesean
 ```
 
@@ -189,8 +189,8 @@ real-time observation feed to Telegram, Discord, or Slack.
 Install on a gateway by cloning the fork and running its installer:
 
 ```bash
-git clone https://github.com/cafesean/claude-mem.git
-bash claude-mem/openclaw/install.sh
+git clone https://github.com/cafesean/claude-mem-pro.git
+bash claude-mem-pro/openclaw/install.sh
 ```
 
 The installer handles dependency checks (Bun, uv), plugin setup, AI-provider
@@ -210,8 +210,8 @@ prompt cache), and adds a `mem_recall` search tool — all talking to the same
 worker, best-effort so it never blocks the agent.
 
 ```bash
-git clone https://github.com/cafesean/claude-mem.git
-cd claude-mem && npm run build
+git clone https://github.com/cafesean/claude-mem-pro.git
+cd claude-mem-pro && npm run build
 bash hermes/install.sh
 ```
 
@@ -297,6 +297,6 @@ worker/hook/SQLite/semantic-search foundation. The mutation-log capture, digest
 injection, and artifact-first recall model are claude-mem-pro's additions. All credit for
 the original architecture goes upstream.
 
-- **claude-mem-pro repository**: [github.com/cafesean/claude-mem](https://github.com/cafesean/claude-mem)
+- **claude-mem-pro repository**: [github.com/cafesean/claude-mem-pro](https://github.com/cafesean/claude-mem-pro)
 - **Upstream**: [github.com/thedotmack/claude-mem](https://github.com/thedotmack/claude-mem)
 - **Maintainer**: Sean Liao ([@cafesean](https://github.com/cafesean))
