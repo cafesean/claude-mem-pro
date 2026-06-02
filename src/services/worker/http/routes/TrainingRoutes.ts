@@ -12,6 +12,11 @@ import {
 } from '../../../training/TrainingService.js';
 import { getProjectContext } from '../../../../utils/project-name.js';
 
+const listQuerySchema = z.object({
+  cwd: z.string().min(1).optional(),
+  scope: z.enum(['project', 'global', 'all']).default('all'),
+});
+
 const createFactSchema = z
   .object({
     cwd: z.string().min(1),
@@ -44,10 +49,14 @@ export class TrainingRoutes extends BaseRouteHandler {
   });
 
   private handleList = this.wrapHandler(async (req: Request, res: Response): Promise<void> => {
-    const cwd = String(req.query.cwd ?? process.cwd());
-    const scope = String(req.query.scope ?? 'all');
+    const parsed = listQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'ValidationError', issues: parsed.error.issues });
+      return;
+    }
+    const { cwd, scope } = parsed.data;
     const sessionStore = this.dbManager.getSessionStore();
-    const project = getProjectContext(cwd).primary;
+    const project = getProjectContext(cwd ?? process.cwd()).primary;
     const includeGlobal = scope === 'all' || scope === 'global';
     const facts = listTrainingFacts(sessionStore, { project, includeGlobal });
     res.json({ ok: true, facts });
@@ -56,7 +65,7 @@ export class TrainingRoutes extends BaseRouteHandler {
   private handleRetire = this.wrapHandler(async (req: Request, res: Response): Promise<void> => {
     const parsed = retireParamsSchema.safeParse(req.params);
     if (!parsed.success) {
-      res.status(400).json({ ok: false, error: 'invalid_id' });
+      this.badRequest(res, 'invalid_id');
       return;
     }
     const sessionStore = this.dbManager.getSessionStore();
