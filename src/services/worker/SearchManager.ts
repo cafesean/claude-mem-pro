@@ -81,12 +81,7 @@ export class SearchManager {
   private async searchChromaForTimeline(query: string, ninetyDaysAgo: number, project?: string): Promise<ObservationSearchResult[]> {
     let whereFilter: Record<string, any> = { doc_type: 'observation' };
     if (project) {
-      const projectFilter = {
-        $or: [
-          { project },
-          { merged_into_project: project }
-        ]
-      };
+      const projectFilter = buildObservationProjectFilter(project);
       whereFilter = { $and: [whereFilter, projectFilter] };
     }
 
@@ -905,12 +900,7 @@ export class SearchManager {
 
       let whereFilter: Record<string, any> = { doc_type: 'observation' };
       if (options.project) {
-        const projectFilter = {
-          $or: [
-            { project: options.project },
-            { merged_into_project: options.project }
-          ]
-        };
+        const projectFilter = buildObservationProjectFilter(options.project);
         whereFilter = { $and: [whereFilter, projectFilter] };
       }
 
@@ -1446,12 +1436,7 @@ export class SearchManager {
 
       let whereFilter: Record<string, any> = { doc_type: 'observation' };
       if (project) {
-        const projectFilter = {
-          $or: [
-            { project },
-            { merged_into_project: project }
-          ]
-        };
+        const projectFilter = buildObservationProjectFilter(project);
         whereFilter = { $and: [whereFilter, projectFilter] };
       }
 
