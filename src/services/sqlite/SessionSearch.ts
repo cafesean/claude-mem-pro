@@ -156,7 +156,9 @@ export class SessionSearch {
     const conditions: string[] = [];
 
     if (filters.project) {
-      conditions.push(`${tableAlias}.project = ?`);
+      // Include the reserved __global__ bucket so globally-scoped must-know
+      // facts (from /training) are eligible in every project's FTS fallback.
+      conditions.push(`(${tableAlias}.project = ? OR ${tableAlias}.project = '__global__')`);
       params.push(filters.project);
     }
 
