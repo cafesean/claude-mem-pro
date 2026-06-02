@@ -18,20 +18,36 @@ Decide which the user wants (ask if unclear):
 
 ## Add (interview)
 
-1. Ask ONE universal opening question: **"What is this for — what are you working on here?"**
-2. From their answer, generate domain-appropriate follow-ups (one at a time). Examples of
-   *how* to probe (generate the actual questions yourself; do not read from a fixed list):
+**Prefer selectable options over open-ended questions.** At every step where you ask the
+user something, use the `AskUserQuestion` tool to present a small set of concrete, tailored
+choices. The user can always pick "Other" to type a custom answer, so options never trap
+them — they just remove the blank-page friction. Fall back to a plain open question only
+when options genuinely don't fit (e.g. "paste anything else I should know").
+
+1. **Opening question (as options).** Ask what this is for via `AskUserQuestion` with a few
+   likely domains as choices, e.g. *Code project · Legal matter · Finance/accounting ·
+   Research · Personal/preferences* (plus the built-in custom "Other"). Tailor the options
+   to any signal you already have (cwd, recent work).
+2. **Domain-adapted follow-ups (as options), one at a time.** From their answer, generate
+   the *right* probes and present each as an `AskUserQuestion` with concrete candidate
+   answers drawn from the domain — don't make the user free-type what you can offer as
+   picks. Generate options yourself; do not read from a fixed list. How to probe per domain:
    - a code repo → stack, deploy flow, gotchas, who owns what, conventions, what must never break
    - a legal matter → the client, the protective stance, deadlines, what must never be missed
    - a finance task → entities, accounts, period, reconciliation rules, sign-off
    - research → the question, the sources that matter, what conclusions are settled vs open
+   Use `multiSelect` when several answers can apply at once. Always let "Other" carry a
+   custom response.
 3. **Brain-dump escape hatch:** if the user says "just always remember X", capture it verbatim.
 4. For each fact, settle:
    - **scope**: `project` (specific to this work) or `global` (true everywhere — who they are,
-     preferences, how they like work done). Infer from the content; only ask if ambiguous.
-   - a short **title** (≤ 8 words).
+     preferences, how they like work done). Infer from the content; if ambiguous, ask via
+     `AskUserQuestion` with `Project` / `Global` as the two choices.
+   - a short **title** (≤ 8 words) — you write this; don't ask.
 
-Keep facts atomic — one fact per write. Confirm the batch with the user before writing.
+Keep facts atomic — one fact per write. Before writing, show the batch you're about to save
+(title + scope + content) and confirm with the user — an `AskUserQuestion` with *Save all ·
+Edit · Cancel* works well here.
 
 ## Writing a fact (worker HTTP)
 
@@ -55,7 +71,9 @@ Report the ids written.
 
 - List: `curl -s "http://$HOST:$PORT/api/training/facts?cwd=$PWD&scope=all"` → `{ok:true,facts:[...]}`.
   Each fact has `id`, `title`, `content`, `scope`, `project`. Present them grouped by scope.
-- Retire: `curl -s -X POST "http://$HOST:$PORT/api/training/facts/<id>/retire"`.
+- Retire: `curl -s -X POST "http://$HOST:$PORT/api/training/facts/<id>/retire"`. Let the user
+  pick which to retire via an `AskUserQuestion` (`multiSelect`) listing the existing facts by
+  title, rather than asking them to recall ids.
 - To "edit": retire the old fact and add a corrected one (no in-place edit endpoint in v1).
 - Dedup: before adding, compare titles against the existing list; skip near-duplicates.
 
