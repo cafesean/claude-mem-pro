@@ -29,14 +29,34 @@ when options genuinely don't fit (e.g. "paste anything else I should know").
    Research · Personal/preferences* (plus the built-in custom "Other"). Tailor the options
    to any signal you already have (cwd, recent work).
 2. **Pick the domain areas to capture (multi-select).** Right after the opening answer,
-   present the candidate areas for that domain as a **`multiSelect: true`** `AskUserQuestion`
-   so the user checks every area worth capturing in one go. Generate the areas yourself from
-   the domain — examples:
+   call `AskUserQuestion` with **`multiSelect: true`** so the user checks every area worth
+   capturing in one go. This MUST be multi-select — set the flag explicitly; do not present a
+   single-select numbered list. Generate the areas yourself from the domain. Copy this shape
+   and replace the options with domain-appropriate ones:
+
+   ```json
+   {
+     "questions": [{
+       "question": "Which areas should I capture must-know facts about?",
+       "header": "Areas",
+       "multiSelect": true,
+       "options": [
+         {"label": "Stack & architecture", "description": "Languages, frameworks, how it's structured"},
+         {"label": "Deploy flow", "description": "How it ships, environments, gotchas"},
+         {"label": "Conventions", "description": "Patterns and rules to follow"},
+         {"label": "What must never break", "description": "Critical invariants"},
+         {"label": "Who owns what", "description": "People, responsibilities, contacts"}
+       ]
+     }]
+   }
+   ```
+
+   Area ideas per domain (generate, don't read verbatim):
    - a code repo → stack, deploy flow, gotchas, who owns what, conventions, what must never break
    - a legal matter → the client, the protective stance, deadlines, what must never be missed
    - a finance task → entities, accounts, period, reconciliation rules, sign-off
    - research → the question, the sources that matter, what conclusions are settled vs open
-   "Other" carries any area you didn't list.
+   "Other" (built in) carries any area you didn't list.
 3. **Drill into each selected area, one at a time (as options).** For each area the user
    checked, ask a focused `AskUserQuestion` with concrete candidate answers drawn from that
    area — don't make the user free-type what you can offer as picks. Use `multiSelect` again
