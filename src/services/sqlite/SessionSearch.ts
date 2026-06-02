@@ -231,6 +231,11 @@ export class SessionSearch {
     }
   }
 
+  // Condition that excludes observations whose metadata explicitly marks active:false (or 0).
+  // Rows with no 'active' key (virtually all non-training observations) are NOT excluded.
+  private static readonly ACTIVE_FILTER =
+    `(json_extract(o.metadata, '$.active') IS NULL OR json_extract(o.metadata, '$.active') NOT IN (0, 'false'))`;
+
   searchObservations(query: string | undefined, options: SearchOptions = {}): ObservationSearchResult[] {
     const params: any[] = [];
     const { limit = 50, offset = 0, orderBy = 'relevance', ...filters } = options;
@@ -247,6 +252,7 @@ export class SessionSearch {
         SELECT o.*, o.discovery_tokens
         FROM observations o
         WHERE ${filterClause}
+        AND ${SessionSearch.ACTIVE_FILTER}
         ${orderClause}
         LIMIT ? OFFSET ?
       `;
@@ -265,6 +271,7 @@ export class SessionSearch {
         JOIN observations_fts ON observations_fts.rowid = o.id
         WHERE observations_fts MATCH ?
         ${filterClause ? 'AND ' + filterClause : ''}
+        AND ${SessionSearch.ACTIVE_FILTER}
         ${orderClause}
         LIMIT ? OFFSET ?
       `;
