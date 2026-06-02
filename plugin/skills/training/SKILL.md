@@ -28,18 +28,21 @@ when options genuinely don't fit (e.g. "paste anything else I should know").
    likely domains as choices, e.g. *Code project · Legal matter · Finance/accounting ·
    Research · Personal/preferences* (plus the built-in custom "Other"). Tailor the options
    to any signal you already have (cwd, recent work).
-2. **Domain-adapted follow-ups (as options), one at a time.** From their answer, generate
-   the *right* probes and present each as an `AskUserQuestion` with concrete candidate
-   answers drawn from the domain — don't make the user free-type what you can offer as
-   picks. Generate options yourself; do not read from a fixed list. How to probe per domain:
+2. **Pick the domain areas to capture (multi-select).** Right after the opening answer,
+   present the candidate areas for that domain as a **`multiSelect: true`** `AskUserQuestion`
+   so the user checks every area worth capturing in one go. Generate the areas yourself from
+   the domain — examples:
    - a code repo → stack, deploy flow, gotchas, who owns what, conventions, what must never break
    - a legal matter → the client, the protective stance, deadlines, what must never be missed
    - a finance task → entities, accounts, period, reconciliation rules, sign-off
    - research → the question, the sources that matter, what conclusions are settled vs open
-   Use `multiSelect` when several answers can apply at once. Always let "Other" carry a
-   custom response.
-3. **Brain-dump escape hatch:** if the user says "just always remember X", capture it verbatim.
-4. For each fact, settle:
+   "Other" carries any area you didn't list.
+3. **Drill into each selected area, one at a time (as options).** For each area the user
+   checked, ask a focused `AskUserQuestion` with concrete candidate answers drawn from that
+   area — don't make the user free-type what you can offer as picks. Use `multiSelect` again
+   when several answers apply at once; always let "Other" carry a custom response.
+4. **Brain-dump escape hatch:** if the user says "just always remember X", capture it verbatim.
+5. For each fact, settle:
    - **scope**: `project` (specific to this work) or `global` (true everywhere — who they are,
      preferences, how they like work done). Infer from the content; if ambiguous, ask via
      `AskUserQuestion` with `Project` / `Global` as the two choices.
