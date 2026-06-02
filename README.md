@@ -27,6 +27,7 @@ files) rather than a separate, ever-staling index.
 - [How it works](#how-it-works)
 - [Recall: the librarian](#recall-the-librarian)
 - [Search: semantic memory (optional)](#search-semantic-memory-optional)
+- [Training: seed must-know facts](#training-seed-must-know-facts)
 - [Integrations](#integrations)
 - [Configuration](#configuration)
 - [Privacy](#privacy)
@@ -173,6 +174,37 @@ Semantic search requires Chroma (`uv`-provided Python); it can be disabled.
 
 ---
 
+## Training: seed must-know facts
+
+Capture and recall are both *passive* — they wait for work to happen. Sometimes you
+already know the things an agent should never get wrong, and you want them on hand
+*before* the system has observed anything. The `training` skill seeds them up front.
+
+Run `/training` (or say "train the plugin", "teach you about this project"). It's
+**not code-only** — the work might be a repo, a legal matter, a finance close, or a
+research project. The skill runs a short interview built from selectable options
+(with a custom "Other" fallback at every step):
+
+1. **Pick the domain** — what this is for.
+2. **Multi-select the areas** worth capturing (stack, deploy flow, conventions, what
+   must never break, who owns what, …) — generated to fit the domain.
+3. **Drill into each area**, one focused question at a time.
+4. **Scope each fact** — `project` (specific to this work) or `global` (true
+   everywhere — who you are, how you like work done).
+
+Facts are stored as `must_know` observations in the same corpus. **Global** facts
+live under a reserved `__global__` project and are made eligible in *every* project's
+lookup, then surface by **relevance** (not pinned to every prompt). Re-run `/training`
+any time to **review, add, or retire** facts.
+
+Seeded facts **auto-surface** through the semantic-injection rail — which is gated by
+`CLAUDE_MEM_SEMANTIC_INJECT` (see [Configuration](#configuration)). With it off, facts
+are still stored and retrievable via recall / `mem-search`; with it on, the relevant
+ones are injected into context as you work. Retiring a fact removes it from listings,
+deletes its vector, and excludes it from search.
+
+---
+
 ## Integrations
 
 claude-mem-pro runs beyond a single Claude Code install. The worker, database, and
@@ -230,6 +262,7 @@ claude-mem-pro's behavior:
 | `CLAUDE_MEM_CAPTURE_MUTATIONS` | `true` | Record durable mutations to the `mutations` table |
 | `CLAUDE_MEM_CAPTURE_OBSERVATIONS` | `false` | Re-enable the legacy per-tool observation track (the old noise source) |
 | `CLAUDE_MEM_INJECT_MODE` | `mutations` | `mutations` injects the digest; `legacy` injects the old observation/summary index |
+| `CLAUDE_MEM_SEMANTIC_INJECT` | `false` | Inject the most relevant observations (incl. `/training` must-know facts) into each prompt by similarity |
 | `CLAUDE_MEM_DATA_DIR` | `~/.claude-mem` | Root for db / chroma / logs / settings — set per profile to isolate accounts |
 | `CLAUDE_MEM_WORKER_PORT` | `37700 + (uid % 100)` | Worker HTTP port (per-user by default; set explicitly for fixed ports) |
 | `CLAUDE_MEM_MODEL` | `claude-haiku-4-5` | Model used for any LLM-assisted processing (not the capture path) |
@@ -260,8 +293,10 @@ files, and build output are never captured in the first place.
   `mutations` table; the legacy observation corpus remains for `mem-search`.
 - **Mutation classifier** — `src/shared/mutation-filter.ts` (`classifyToolCall()`).
 - **Mutation digest** — `src/services/context/MutationDigest.ts`.
-- **Skills** — `recall` (librarian), `mem-search` (semantic), plus workflow skills
-  (`make-plan`, `do`, `learn-codebase`, `timeline-report`, …) under `plugin/skills/`.
+- **Skills** — `recall` (librarian), `mem-search` (semantic), `training` (seed
+  must-know facts via `TrainingRoutes` → `src/services/training/`), plus workflow
+  skills (`make-plan`, `do`, `learn-codebase`, `timeline-report`, …) under
+  `plugin/skills/`.
 - **Viewer UI** (`src/ui/viewer/`) — React interface served by the worker for
   browsing stored memory.
 
