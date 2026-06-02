@@ -2699,7 +2699,7 @@ export class SessionStore {
     if (row.metadata) {
       try {
         const parsed = JSON.parse(row.metadata);
-        if (parsed && typeof parsed === 'object') existing = parsed as Record<string, unknown>;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) existing = parsed as Record<string, unknown>;
       } catch {
         // corrupt metadata — overwrite with the patch
       }

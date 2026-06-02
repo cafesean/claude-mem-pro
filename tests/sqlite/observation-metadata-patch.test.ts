@@ -33,4 +33,17 @@ describe('SessionStore.updateObservationMetadataPatch', () => {
     const row = store.db.prepare('SELECT metadata FROM observations WHERE id = ?').get(stored.id) as { metadata: string };
     expect(JSON.parse(row.metadata).active).toBe(false);
   });
+
+  it('discards corrupt metadata and applies patch cleanly', () => {
+    const memoryId = store.getOrCreateManualSession('proj-z');
+    const stored = store.storeObservation(memoryId, 'proj-z', {
+      type: 'must_know', title: 'Z', subtitle: null, facts: [], narrative: 'z',
+      concepts: [], files_read: [], files_modified: [], agent_type: 'training',
+      agent_id: null, metadata: null,
+    });
+    store.db.prepare('UPDATE observations SET metadata = ? WHERE id = ?').run('not-json', stored.id);
+    store.updateObservationMetadataPatch(stored.id, { active: false });
+    const row = store.db.prepare('SELECT metadata FROM observations WHERE id = ?').get(stored.id) as { metadata: string };
+    expect(JSON.parse(row.metadata)).toEqual({ active: false });
+  });
 });
