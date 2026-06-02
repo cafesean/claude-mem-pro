@@ -2683,6 +2683,32 @@ export class SessionStore {
   }
 
   /**
+   * Merge top-level keys into an observation's metadata JSON. Used by the
+   * training command to flip `active:false` on retire. Leaves other keys
+   * intact; creates the object if metadata was null/blank.
+   */
+  updateObservationMetadataPatch(id: number, patch: Record<string, unknown>): void {
+    const row = this.db
+      .prepare('SELECT metadata FROM observations WHERE id = ?')
+      .get(id) as { metadata: string | null } | undefined;
+    if (!row) {
+      logger.warn('TRAINING', `updateObservationMetadataPatch: no observation id=${id}`);
+      return;
+    }
+    let existing: Record<string, unknown> = {};
+    if (row.metadata) {
+      try {
+        const parsed = JSON.parse(row.metadata);
+        if (parsed && typeof parsed === 'object') existing = parsed as Record<string, unknown>;
+      } catch {
+        // corrupt metadata — overwrite with the patch
+      }
+    }
+    const merged = { ...existing, ...patch };
+    this.db.prepare('UPDATE observations SET metadata = ? WHERE id = ?').run(JSON.stringify(merged), id);
+  }
+
+  /**
    * Phase 4 — persist a SessionRecord. Stores all fields including nested
    * content as JSON. UPSERTs on id so re-synthesis overwrites.
    */
