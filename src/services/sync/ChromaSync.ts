@@ -1093,6 +1093,48 @@ export class ChromaSync {
     });
   }
 
+  /**
+   * Delete all Chroma documents for a given observation SQLite id.
+   *
+   * Fetches the document ids stored with metadata `sqlite_id == observationId`
+   * from the collection, then issues a single `chroma_delete_documents` call.
+   * Observation documents use ids like `obs_<id>_narrative`, `obs_<id>_text`,
+   * and `obs_<id>_fact_<N>`, so they can only be reliably enumerated by
+   * querying on the stored metadata field.
+   *
+   * Throws on connection errors so the caller can decide whether to warn/retry.
+   */
+  async deleteObservationDocs(observationId: number): Promise<void> {
+    await this.ensureCollectionExists();
+    const chromaMcp = ChromaMcpManager.getInstance();
+
+    const existing = await chromaMcp.callTool('chroma_get_documents', {
+      collection_name: this.collectionName,
+      where: { sqlite_id: observationId },
+      include: ['metadatas']
+    }) as { ids?: string[] };
+
+    const docIds: string[] = existing?.ids ?? [];
+    if (docIds.length === 0) {
+      logger.debug('CHROMA_SYNC', 'deleteObservationDocs: no Chroma docs found for observation', {
+        observationId,
+        collection: this.collectionName
+      });
+      return;
+    }
+
+    await chromaMcp.callTool('chroma_delete_documents', {
+      collection_name: this.collectionName,
+      ids: docIds
+    });
+
+    logger.info('CHROMA_SYNC', 'Deleted Chroma docs for retired observation', {
+      observationId,
+      collection: this.collectionName,
+      deletedCount: docIds.length
+    });
+  }
+
   async close(): Promise<void> {
     logger.info('CHROMA_SYNC', 'ChromaSync closed', { project: this.project });
   }

@@ -19,10 +19,10 @@ const listQuerySchema = z.object({
 
 const createFactSchema = z
   .object({
-    cwd: z.string().min(1),
+    cwd: z.string().min(1).optional(),
     scope: z.enum(['project', 'global']),
-    title: z.string().min(1),
-    content: z.string().min(1),
+    title: z.string().min(1).max(500),
+    content: z.string().min(1).max(10000),
   })
   .strict();
 
@@ -69,7 +69,8 @@ export class TrainingRoutes extends BaseRouteHandler {
       return;
     }
     const sessionStore = this.dbManager.getSessionStore();
-    retireTrainingFact(sessionStore, parsed.data.id);
+    const chromaSync = this.dbManager.getChromaSync();
+    await retireTrainingFact(sessionStore, chromaSync, parsed.data.id);
     logger.info('TRAINING', `retired fact id=${parsed.data.id}`);
     res.json({ ok: true });
   });

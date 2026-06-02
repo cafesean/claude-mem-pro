@@ -41,7 +41,7 @@ write via its HTTP API. Resolve the worker URL from settings, then POST per fact
 ```bash
 DATA_DIR="${CLAUDE_MEM_DATA_DIR:-$HOME/.claude-mem}"
 HOST=$(node -e "try{console.log(require('$DATA_DIR/settings.json').CLAUDE_MEM_WORKER_HOST||'127.0.0.1')}catch(e){console.log('127.0.0.1')}")
-PORT=$(node -e "console.log(require('$DATA_DIR/settings.json').CLAUDE_MEM_WORKER_PORT)")
+PORT=$(node -e "try{console.log(require('$DATA_DIR/settings.json').CLAUDE_MEM_WORKER_PORT||37701)}catch(e){console.log(37701)}")
 curl -s -X POST "http://$HOST:$PORT/api/training/facts" \
   -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg cwd "$PWD" --arg scope "project" --arg title "Deploy flow" --arg content "Deploys via Coolify, not Vercel." \

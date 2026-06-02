@@ -4,6 +4,7 @@ import { DATA_DIR, DB_PATH, ensureDir } from '../../shared/paths.js';
 import { logger } from '../../utils/logger.js';
 import { isDirectChild } from '../../shared/path-utils.js';
 import { AppError } from '../server/ErrorHandler.js';
+import { GLOBAL_PROJECT } from '../../shared/training-constants.js';
 import {
   ObservationSearchResult,
   SessionSummarySearchResult,
@@ -158,8 +159,8 @@ export class SessionSearch {
     if (filters.project) {
       // Include the reserved __global__ bucket so globally-scoped must-know
       // facts (from /training) are eligible in every project's FTS fallback.
-      conditions.push(`(${tableAlias}.project = ? OR ${tableAlias}.project = '__global__')`);
-      params.push(filters.project);
+      conditions.push(`(${tableAlias}.project = ? OR ${tableAlias}.project = ?)`);
+      params.push(filters.project, GLOBAL_PROJECT);
     }
 
     if (filters.type) {

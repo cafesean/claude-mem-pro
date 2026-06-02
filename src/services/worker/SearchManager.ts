@@ -10,6 +10,7 @@ import { logger } from '../../utils/logger.js';
 import { getProjectContext } from '../../utils/project-name.js';
 import { formatDate, formatTime, formatDateTime, extractFirstFile, groupByDate, estimateTokens } from '../../shared/timeline-formatting.js';
 import { ModeManager } from '../domain/ModeManager.js';
+import { GLOBAL_PROJECT } from '../../shared/training-constants.js';
 
 import {
   SearchOrchestrator,
@@ -31,7 +32,7 @@ export function buildObservationProjectFilter(project: string): { $or: Array<Rec
     $or: [
       { project },
       { merged_into_project: project },
-      { project: '__global__' },
+      { project: GLOBAL_PROJECT },
     ],
   };
 }

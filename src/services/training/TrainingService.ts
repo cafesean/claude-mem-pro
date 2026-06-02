@@ -4,9 +4,9 @@ import type { ChromaSync } from '../sync/ChromaSync.js';
 import type { ParsedObservation } from '../../sdk/parser.js';
 import { getProjectContext } from '../../utils/project-name.js';
 import { logger } from '../../utils/logger.js';
-
-export const GLOBAL_PROJECT = '__global__';
-export const MUST_KNOW_TYPE = 'must_know';
+// Re-export so existing importers keep working. Import for internal use too.
+export { GLOBAL_PROJECT, MUST_KNOW_TYPE } from '../../shared/training-constants.js';
+import { GLOBAL_PROJECT, MUST_KNOW_TYPE } from '../../shared/training-constants.js';
 
 export interface CreateFactInput {
   cwd?: string;
@@ -26,7 +26,15 @@ export interface TrainingFact {
 }
 
 function resolveProject(scope: 'project' | 'global', cwd?: string): string {
-  return scope === 'global' ? GLOBAL_PROJECT : getProjectContext(cwd ?? process.cwd()).primary;
+  if (scope === 'global') return GLOBAL_PROJECT;
+  const primary = getProjectContext(cwd ?? process.cwd()).primary;
+  if (primary === GLOBAL_PROJECT) {
+    // A directory literally named '__global__' would silently leak facts into
+    // the global bucket. Fall back to a safe sentinel instead.
+    logger.warn('TRAINING', `cwd resolves to reserved project name '${GLOBAL_PROJECT}'; using 'unknown-project' to prevent global leak`);
+    return 'unknown-project';
+  }
+  return primary;
 }
 
 export async function createTrainingFact(
@@ -112,6 +120,18 @@ export function listTrainingFacts(
     .filter((f) => f.active);
 }
 
-export function retireTrainingFact(sessionStore: SessionStore, id: number): void {
+export async function retireTrainingFact(
+  sessionStore: SessionStore,
+  chromaSync: ChromaSync | null | undefined,
+  id: number,
+): Promise<void> {
   sessionStore.updateObservationMetadataPatch(id, { active: false });
+
+  if (chromaSync) {
+    try {
+      await chromaSync.deleteObservationDocs(id);
+    } catch (err) {
+      logger.warn('TRAINING', `Chroma delete failed for retired fact id=${id}: ${(err as Error).message?.slice(0, 200)}`);
+    }
+  }
 }

@@ -49,7 +49,7 @@ describe('TrainingService', () => {
     const res = await createTrainingFact(store, null, {
       cwd: '/tmp/proj-b', scope: 'project', title: 'Temp', content: 'temp fact',
     });
-    retireTrainingFact(store, res.id);
+    await retireTrainingFact(store, null, res.id);
     const active = listTrainingFacts(store, { project: res.project, includeGlobal: false });
     expect(active.some(f => f.id === res.id)).toBe(false);
   });
