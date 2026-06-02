@@ -1,12 +1,12 @@
 ---
 name: training
-description: Seed claude-mem with must-know facts about whatever you're working on — code repo, legal matter, finance close, research, anything. Use when the user says "train the plugin", "/training", "teach you about this project", "what should you always know", "remember these facts about my work", or wants to initialize must-know context up front instead of waiting for it to be learned passively. Captures durable facts that auto-surface by relevance later.
+description: Seed claude-mem-pro with must-know facts about whatever you're working on — code repo, legal matter, finance close, research, anything. Use when the user says "train the plugin", "/training", "teach you about this project", "what should you always know", "remember these facts about my work", or wants to initialize must-know context up front instead of waiting for it to be learned passively. Captures durable facts that auto-surface by relevance later.
 ---
 
 # Training — seed must-know facts
 
 You are capturing **must-know facts** the user wants you to reliably have on hand in future
-sessions. Facts are written into claude-mem's observation corpus tagged `must_know` and
+sessions. Facts are written into claude-mem-pro's observation corpus tagged `must_know` and
 auto-surface later via the semantic-injection rail. This is **not** code-only — the work may
 be a repo, a legal matter, an accounting close, a research project, or anything else.
 
@@ -74,7 +74,7 @@ Edit · Cancel* works well here.
 
 ## Writing a fact (worker HTTP)
 
-claude-mem's MCP write tools require the server-beta runtime; locally we use the worker, so
+claude-mem-pro's MCP write tools require the server-beta runtime; locally we use the worker, so
 write via its HTTP API. Resolve the worker URL from settings, then POST per fact:
 
 ```bash
