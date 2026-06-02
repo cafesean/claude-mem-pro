@@ -36,6 +36,15 @@ describe('TrainingService', () => {
     expect(fact!.active).toBe(true);
   });
 
+  it('global fact is excluded when includeGlobal is false', async () => {
+    await createTrainingFact(store, null, {
+      cwd: '/tmp/x', scope: 'global', title: 'Global only',
+      content: 'Should not appear for project-scoped lists.',
+    });
+    const facts = listTrainingFacts(store, { project: 'some-proj', includeGlobal: false });
+    expect(facts.some(f => f.title === 'Global only')).toBe(false);
+  });
+
   it('retire flips active to false and hides from default list', async () => {
     const res = await createTrainingFact(store, null, {
       cwd: '/tmp/proj-b', scope: 'project', title: 'Temp', content: 'temp fact',

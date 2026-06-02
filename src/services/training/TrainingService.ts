@@ -9,7 +9,7 @@ export const GLOBAL_PROJECT = '__global__';
 export const MUST_KNOW_TYPE = 'must_know';
 
 export interface CreateFactInput {
-  cwd: string;
+  cwd?: string;
   scope: 'project' | 'global';
   title: string;
   content: string;
@@ -25,8 +25,8 @@ export interface TrainingFact {
   created_at_epoch: number;
 }
 
-function resolveProject(scope: 'project' | 'global', cwd: string): string {
-  return scope === 'global' ? GLOBAL_PROJECT : getProjectContext(cwd).primary;
+function resolveProject(scope: 'project' | 'global', cwd?: string): string {
+  return scope === 'global' ? GLOBAL_PROJECT : getProjectContext(cwd ?? process.cwd()).primary;
 }
 
 export async function createTrainingFact(
@@ -78,7 +78,9 @@ export function listTrainingFacts(
   sessionStore: SessionStore,
   opts: { project: string; includeGlobal: boolean },
 ): TrainingFact[] {
-  const projects = opts.includeGlobal ? [opts.project, GLOBAL_PROJECT] : [opts.project];
+  const projects = opts.includeGlobal
+    ? [...new Set([opts.project, GLOBAL_PROJECT])]
+    : [opts.project];
   const placeholders = projects.map(() => '?').join(',');
   const rows = sessionStore.db
     .prepare(
