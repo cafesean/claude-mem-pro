@@ -20,6 +20,22 @@ import type { TimelineData } from './search/index.js';
 import { ResultFormatter } from './search/ResultFormatter.js';
 import { ChromaUnavailableError } from './search/errors.js';
 
+/**
+ * Candidate project filter for observation search. Includes the current
+ * project, anything merged into it, and the reserved `__global__` bucket so
+ * globally-scoped must-know facts (written by /training) are eligible in every
+ * project. Relevance ranking still decides what actually surfaces.
+ */
+export function buildObservationProjectFilter(project: string): { $or: Array<Record<string, string>> } {
+  return {
+    $or: [
+      { project },
+      { merged_into_project: project },
+      { project: '__global__' },
+    ],
+  };
+}
+
 export class SearchManager {
   private orchestrator: SearchOrchestrator;
   private timelineBuilder: TimelineBuilder;
@@ -178,12 +194,7 @@ export class SearchManager {
       }
 
       if (options.project) {
-        const projectFilter = {
-          $or: [
-            { project: options.project },
-            { merged_into_project: options.project }
-          ]
-        };
+        const projectFilter = buildObservationProjectFilter(options.project);
         whereFilter = whereFilter
           ? { $and: [whereFilter, projectFilter] }
           : projectFilter;
