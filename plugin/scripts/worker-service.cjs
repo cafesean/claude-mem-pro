@@ -11159,10 +11159,11 @@ For more info: https://docs.claude-mem.ai/usage/gemini-provider
     `)}buildFilterClause(e,r,n="o"){let i=[];if(e.project&&(i.push(`(${n}.project = ? OR ${n}.project = ?)`),r.push(e.project,Nd)),e.type)if(Array.isArray(e.type)){let s=e.type.map(()=>"?").join(",");i.push(`${n}.type IN (${s})`),r.push(...e.type)}else i.push(`${n}.type = ?`),r.push(e.type);if(e.dateRange){let{start:s,end:o}=e.dateRange;if(s){let a=typeof s=="number"?s:new Date(s).getTime();i.push(`${n}.created_at_epoch >= ?`),r.push(a)}if(o){let a=typeof o=="number"?o:new Date(o).getTime();i.push(`${n}.created_at_epoch <= ?`),r.push(a)}}if(e.concepts){let s=Array.isArray(e.concepts)?e.concepts:[e.concepts],o=s.map(()=>`EXISTS (SELECT 1 FROM json_each(${n}.concepts) WHERE value = ?)`);o.length>0&&(i.push(`(${o.join(" OR ")})`),r.push(...s))}if(e.files){let s=Array.isArray(e.files)?e.files:[e.files],o=s.map(()=>`(
           EXISTS (SELECT 1 FROM json_each(${n}.files_read) WHERE value LIKE ?)
           OR EXISTS (SELECT 1 FROM json_each(${n}.files_modified) WHERE value LIKE ?)
-        )`);o.length>0&&(i.push(`(${o.join(" OR ")})`),s.forEach(a=>{r.push(`%${a}%`,`%${a}%`)}))}return i.length>0?i.join(" AND "):""}buildOrderClause(e="relevance",r=!0,n="observations_fts"){switch(e){case"relevance":return r?`ORDER BY ${n}.rank ASC`:"ORDER BY o.created_at_epoch DESC";case"date_desc":return"ORDER BY o.created_at_epoch DESC";case"date_asc":return"ORDER BY o.created_at_epoch ASC";default:return"ORDER BY o.created_at_epoch DESC"}}searchObservations(e,r={}){let n=[],{limit:i=50,offset:s=0,orderBy:o="relevance",...a}=r;if(!e){let c=this.buildFilterClause(a,n,"o");if(!c)throw new no(t.MISSING_SEARCH_INPUT_MESSAGE,400,"INVALID_SEARCH_REQUEST");let l=this.buildOrderClause(o,!1),u=`
+        )`);o.length>0&&(i.push(`(${o.join(" OR ")})`),s.forEach(a=>{r.push(`%${a}%`,`%${a}%`)}))}return i.length>0?i.join(" AND "):""}buildOrderClause(e="relevance",r=!0,n="observations_fts"){switch(e){case"relevance":return r?`ORDER BY ${n}.rank ASC`:"ORDER BY o.created_at_epoch DESC";case"date_desc":return"ORDER BY o.created_at_epoch DESC";case"date_asc":return"ORDER BY o.created_at_epoch ASC";default:return"ORDER BY o.created_at_epoch DESC"}}static ACTIVE_FILTER="(json_extract(o.metadata, '$.active') IS NULL OR json_extract(o.metadata, '$.active') NOT IN (0, 'false'))";searchObservations(e,r={}){let n=[],{limit:i=50,offset:s=0,orderBy:o="relevance",...a}=r;if(!e){let c=this.buildFilterClause(a,n,"o");if(!c)throw new no(t.MISSING_SEARCH_INPUT_MESSAGE,400,"INVALID_SEARCH_REQUEST");let l=this.buildOrderClause(o,!1),u=`
         SELECT o.*, o.discovery_tokens
         FROM observations o
         WHERE ${c}
+        AND ${t.ACTIVE_FILTER}
         ${l}
         LIMIT ? OFFSET ?
       `;return n.push(i,s),this.db.prepare(u).all(...n)}if(this._fts5Available){let c=this.buildFilterClause(a,n,"o"),l=this.buildOrderClause(o,!0,"observations_fts"),u=`
@@ -11171,6 +11172,7 @@ For more info: https://docs.claude-mem.ai/usage/gemini-provider
         JOIN observations_fts ON observations_fts.rowid = o.id
         WHERE observations_fts MATCH ?
         ${c?"AND "+c:""}
+        AND ${t.ACTIVE_FILTER}
         ${l}
         LIMIT ? OFFSET ?
       `,d='"'+e.replace(/"/g,'""')+'"';n.unshift(d),n.push(i,s);try{return this.db.prepare(u).all(...n)}catch(p){throw S.warn("DB","FTS5 observation search failed",{},p instanceof Error?p:void 0),p}}return S.warn("DB","Text search unavailable: ChromaDB disabled and FTS5 not available"),[]}searchSessions(e,r={}){let n=[],{limit:i=50,offset:s=0,orderBy:o="relevance",...a}=r;if(!e){let c={...a};delete c.type;let l=this.buildFilterClause(c,n,"s");if(!l)throw new no(t.MISSING_SEARCH_INPUT_MESSAGE,400,"INVALID_SEARCH_REQUEST");let d=`
