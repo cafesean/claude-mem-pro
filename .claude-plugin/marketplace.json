@@ -10,9 +10,9 @@
   "plugins": [
     {
       "name": "claude-mem-pro",
-      "version": "13.3.0",
+      "version": "13.4.0",
       "source": "./plugin",
-      "description": "claude-mem-pro: persistent memory + dev-workflow schema absorb pipeline"
+      "description": "claude-mem-pro: persistent memory + configurable artifact locations + session lifecycle commands (init, session-start/update/end)"
     }
   ]
 }

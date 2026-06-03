@@ -8,12 +8,27 @@ description: Find what was done, decided, or learned in past work by searching t
 claude-mem-pro does not hold the knowledge; the **artifacts** do. Your job is to find the
 right artifact and the right section inside it, then read only that section.
 
+## Step 0: Resolve where artifacts live (do this first)
+
+claude-mem-pro does not assume where a project stores its artifacts. Resolve the
+configured locations before searching:
+
+```bash
+node "$CLAUDE_PLUGIN_ROOT/scripts/artifact-paths.cjs" get
+```
+
+This returns absolute paths for `sessionsDir`, `specsDirs`, `memoryDir` (and `wikiDir`).
+Use these in place of any hardcoded paths below. If `configured: false`, tell the user to
+run `/init` so claude-mem-pro knows where this project's artifacts are, then fall back to
+searching the conventional locations (`_ai/sessions`, `_context`, `CLAUDE.md`, the memory
+dir) only as a best effort.
+
 ## Where knowledge lives (search these, in authority order)
 
 1. **CLAUDE.md** (per repo) — authoritative standing rules / architecture. Highest trust.
-2. **Memory notes** — `~/.claude/projects/<project>/memory/*.md` + `MEMORY.md` index. Durable facts, gotchas, user feedback.
-3. **Specs** — `_context/**/specs.md`, `_context/**/_specs/**/*.md`. Designs, decisions. Check for `SUPERSEDED`/`PARKED` status — demote those.
-4. **Session files** — `_ai/sessions/*.md`. Richest detail. Sections are self-contained: `## Architecture Issues`, `## Lessons Learned`, `## User Steering & Corrections`, `## SDK Notes`, `## Next Steps`, `## Commit Log`.
+2. **Memory notes** — `<memoryDir>/*.md` + `MEMORY.md` index. Durable facts, gotchas, user feedback.
+3. **Specs** — the configured `<specsDirs>` (e.g. `_context/**/_specs/**/*.md`). Designs, decisions. Check for `SUPERSEDED`/`PARKED` status — demote those.
+4. **Session files** — `<sessionsDir>/*.md`. Richest detail. Sections are self-contained: `## Architecture Issues`, `## Lessons Learned`, `## User Steering & Corrections`, `## SDK Notes`, `## Next Steps`, `## Commit Log`.
 
 Do NOT search source code or git for "what we decided/learned" — that's what these
 artifacts are for. Use code search only to confirm a pointer the artifacts gave you.
@@ -23,9 +38,9 @@ artifacts are for. Use code search only to confirm a pointer the artifacts gave 
 1. **Identify intent + topic.** Map the question to keywords AND, if known, a topic
    tag (rls, caching, oauth, org-isolation, schema-design, deployment, plugins, …).
 
-2. **Scan, ranked by authority + recency.** Grep the corpus for the keywords:
-   - `rg -l "<keywords>" _ai/sessions/ _context/ CLAUDE.md` (+ the memory dir)
-   - Session files are date-prefixed (`YYYY-MM-DD-[project]-desc.md`) — prefer recent.
+2. **Scan, ranked by authority + recency.** Grep the resolved corpus for the keywords:
+   - `rg -l "<keywords>" <sessionsDir> <specsDirs...> <repo>/CLAUDE.md` (+ the memory dir)
+   - Session files are date-prefixed (`YYYY-MM-DD-[tag]-desc.md`) — prefer recent.
    - Frontmatter `topics:` / `tags:` in session files = strong topic signal.
 
 3. **Open the matching SECTION, not the whole file.** Session/spec files are large;
