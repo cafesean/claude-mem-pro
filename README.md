@@ -24,8 +24,10 @@ files) rather than a separate, ever-staling index.
 - [Quick Start](#quick-start)
 - [Why claude-mem-pro](#why-claude-mem-pro)
 - [What's different from claude-mem](#whats-different-from-claude-mem)
+- [Project setup: where your artifacts live](#project-setup-where-your-artifacts-live)
 - [How it works](#how-it-works)
 - [Recall: the librarian](#recall-the-librarian)
+- [Sessions: capture by hand](#sessions-capture-by-hand)
 - [Search: semantic memory (optional)](#search-semantic-memory-optional)
 - [Training: seed must-know facts](#training-seed-must-know-facts)
 - [Integrations](#integrations)
@@ -51,6 +53,11 @@ Restart Claude Code. That's it — durable changes are now captured automaticall
 every new session opens with a [mutation digest](#track-a4--inject-a-mutation-digest)
 of what recently changed. Ask things like *"how did we do X last time?"* and the
 [recall librarian](#recall-the-librarian) finds it in your project's artifacts.
+
+Then run **`/init`** once per project to tell claude-mem-pro where that project keeps its
+artifacts (session files, specs, memory notes, wiki). claude-mem-pro does **not** assume
+everyone stores these in the same place — recall and the [session commands](#sessions-capture-by-hand)
+read those locations from your config. See [Project setup](#project-setup-where-your-artifacts-live).
 
 > **Running it alongside upstream claude-mem?** Give claude-mem-pro its own data dir
 > and worker port so the two don't share a database:
@@ -96,6 +103,45 @@ The old behavior is still one env var away (`CLAUDE_MEM_INJECT_MODE=legacy`,
 
 ---
 
+## Project setup: where your artifacts live
+
+claude-mem-pro is artifact-first — it reads and writes your project's session files,
+specs, and memory notes. But it **does not assume** everyone stores those in the same
+place. Each project declares its locations once, and every consumer (the recall
+librarian and the [session commands](#sessions-capture-by-hand)) resolves paths from that
+declaration instead of hardcoding `_ai/sessions` / `_context`.
+
+Run **`/init`** in a project to set it up. The command:
+
+1. Detects the project (keyed by the same identity claude-mem uses everywhere —
+   `basename(cwd)`, worktree-aware).
+2. Asks where each artifact type lives — offering common conventions as *suggestions*,
+   never silently assuming them.
+3. Persists them, and suggests `/training` as a follow-up.
+
+Locations are stored as a top-level `projects` map in `~/.claude-mem/settings.json` —
+**nothing is written into your repo**:
+
+```jsonc
+"projects": {
+  "<project-key>": {
+    "sessionsDir": "_ai/sessions",          // relative to project root, absolute, or ~-prefixed
+    "specsDirs": ["_context"],
+    "memoryDir": "~/.claude/projects/<slug>/memory",
+    "wikiDir": "docs/wiki",
+    "currentSessionFile": "_ai/sessions/.current-session",
+    "projectTags": ["web", "api", "docs"]   // optional [tag]s for session filenames
+  }
+}
+```
+
+Until a project is configured, the session commands **require `/init` first** rather than
+writing files to an assumed location. Re-run `/init` any time to reconfigure. Internally a
+single resolver (`plugin/scripts/artifact-paths.cjs`, `check` / `get` / `set`) is the only
+thing that reads or writes this map.
+
+---
+
 ## How it works
 
 claude-mem-pro runs as a set of Claude Code lifecycle hooks that talk to a small local
@@ -129,13 +175,14 @@ recall skill for anything deeper — not a wall of summarized activity.
 ### Track B — Recall: a librarian over your artifacts
 
 claude-mem-pro doesn't hold your project's knowledge — your **artifacts** do. The `recall`
-skill guides the agent to find past work where it actually lives, in authority
-order:
+skill guides the agent to find past work where it actually lives, in authority order
+(locations resolved from your [`/init` config](#project-setup-where-your-artifacts-live);
+conventional defaults shown):
 
 1. **CLAUDE.md** (per repo) — standing rules / architecture
-2. **Memory notes** — `~/.claude/projects/<project>/memory/*.md`
-3. **Specs** — `_context/**/specs.md` (skipping `SUPERSEDED` / `PARKED`)
-4. **Session files** — `_ai/sessions/*.md` (richest detail; self-contained `##` sections)
+2. **Memory notes** — `memoryDir` (e.g. `~/.claude/projects/<project>/memory/*.md`)
+3. **Specs** — `specsDirs` (e.g. `_context/**`, skipping `SUPERSEDED` / `PARKED`)
+4. **Session files** — `sessionsDir` (e.g. `_ai/sessions/*.md`; richest detail; self-contained `##` sections)
 
 It opens the *exact section*, ranks by authority + recency, and reports **pointers,
 not dumps**. Because it reads live files, it is never stale and needs no index.
@@ -155,6 +202,30 @@ Ask naturally and the `recall` skill fires:
 claude-mem-pro searches your durable artifacts, finds the matching `##` section, and
 answers with a citation (`file:section`) and a short snippet — so you can drill in
 at the source instead of trusting a lossy summary.
+
+---
+
+## Sessions: capture by hand
+
+Mutation capture is automatic, but the richest artifact recall draws on is a **session
+file** — a structured, RAG-optimized log of what a piece of work set out to do, what
+changed and why, the architecture issues and lessons it surfaced, and where the user had
+to steer. claude-mem-pro owns the commands that produce them:
+
+| Command | What it does |
+|---------|--------------|
+| `/session-start` | Create a session file in your configured `sessionsDir` with YAML frontmatter (title, topics, tags, commits, …) and skeleton sections. Tags the filename `YYYY-MM-DD-[tag]-desc.md`. |
+| `/session-update` | Append a detailed, self-contained update block and refresh the standing sections (SDK notes, architecture issues, lessons learned, user steering, next steps). |
+| `/session-end` | Append a closing summary (git/todo/accomplishments), fold durable lessons into `CLAUDE.md`, and remove the session from the active-session tracker. |
+
+These honor your [`/init` config](#project-setup-where-your-artifacts-live): they write to
+`sessionsDir`, tag filenames from `projectTags`, and track active sessions in
+`currentSessionFile`. If a project isn't configured yet, they stop and route you through
+`/init` rather than guessing a location.
+
+Session files feed a three-stage knowledge pipeline — **sessions** → distilled
+**learnings** → authoritative **golden docs** — and are exactly what the [recall
+librarian](#recall-the-librarian) ranks highest for detail.
 
 ---
 
@@ -267,6 +338,11 @@ claude-mem-pro's behavior:
 | `CLAUDE_MEM_WORKER_PORT` | `37700 + (uid % 100)` | Worker HTTP port (per-user by default; set explicitly for fixed ports) |
 | `CLAUDE_MEM_MODEL` | `claude-haiku-4-5` | Model used for any LLM-assisted processing (not the capture path) |
 
+The same `settings.json` also holds a top-level **`projects`** map — per-project
+artifact locations written by [`/init`](#project-setup-where-your-artifacts-live) and read
+by recall and the session commands. It's data (not a `CLAUDE_MEM_*` flag) and is managed
+through `/init` / the `artifact-paths.cjs` resolver rather than by hand.
+
 To run claude-mem-pro and upstream claude-mem side by side, give each its own
 `CLAUDE_MEM_DATA_DIR` and `CLAUDE_MEM_WORKER_PORT`. Every path and port derives from
 those two variables.
@@ -297,6 +373,12 @@ files, and build output are never captured in the first place.
   must-know facts via `TrainingRoutes` → `src/services/training/`), plus workflow
   skills (`make-plan`, `do`, `learn-codebase`, `timeline-report`, …) under
   `plugin/skills/`.
+- **Commands** (`plugin/commands/`) — `init` (declare artifact locations) and the
+  `session-start` / `session-update` / `session-end` lifecycle.
+- **Artifact resolver** — `plugin/scripts/artifact-paths.cjs` (`check` / `get` / `set`):
+  the single source of truth for the per-project `projects` map; keyed by
+  `getProjectName(cwd)` (`src/utils/project-name.ts`), data dir via `resolveDataDir()`
+  (`src/shared/paths.ts`).
 - **Viewer UI** (`src/ui/viewer/`) — React interface served by the worker for
   browsing stored memory.
 
