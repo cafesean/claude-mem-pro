@@ -30,9 +30,16 @@ export function loadContextConfig(): ContextConfig {
     digestMaxBlocks: parseInt(settings.CLAUDE_MEM_DIGEST_MAX_BLOCKS, 10),
     digestFilesPerBlock: parseInt(settings.CLAUDE_MEM_DIGEST_FILES_PER_BLOCK, 10),
     digestDescribe: settings.CLAUDE_MEM_DIGEST_DESCRIBE !== 'false',
+    granularity: normalizeGranularity(settings.CLAUDE_MEM_CONTEXT_GRANULARITY),
+    recentSessionCount: parseInt(settings.CLAUDE_MEM_CONTEXT_RECENT_SESSIONS, 10) || 5,
   };
 }
 
 function normalizeDigestGroup(value: string | undefined): 'session' | 'topic' | 'flat' {
   return value === 'topic' || value === 'flat' ? value : 'session';
+}
+
+function normalizeGranularity(value: string | undefined): 'auto' | 'pointers' | 'mutations' | 'observations' {
+  if (value === 'pointers' || value === 'mutations' || value === 'observations') return value;
+  return 'auto';
 }

@@ -53,3 +53,5 @@ docker/install-test/
 # Python
 __pycache__/
 *.pyc
+
+/graphify-out

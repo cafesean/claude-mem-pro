@@ -26,6 +26,8 @@ import { shouldShowSummary, renderSummaryFields } from './sections/SummaryRender
 import { renderPreviouslySection, renderFooter } from './sections/FooterRenderer.js';
 import { renderAgentEmptyState } from './formatters/AgentFormatter.js';
 import { renderHumanEmptyState } from './formatters/HumanFormatter.js';
+import { resolveArtifactPaths, listRecentSessionFiles } from './ArtifactPathsResolver.js';
+import { renderArtifactPointers } from './sections/ArtifactPointersRenderer.js';
 
 const VERSION_MARKER_PATH = path.join(
   homedir(),
@@ -85,27 +87,52 @@ function buildContextOutput(
 ): string {
   const output: string[] = [];
 
-  if (injectMode() === 'mutations') {
-    // New injection: minimal header + clean digest of durable mutations +
-    // a recall pointer. Skips the noisy observation/summary index AND the
-    // legacy token-economics header (meaningless for the digest).
+  // Routing precedence:
+  //   granularity = 'pointers'      → always artifact-pointers
+  //   granularity = 'auto'          → pointers if /init-configured, else fall through
+  //   granularity = 'mutations'     → force mutations digest
+  //   granularity = 'observations'  → force legacy observation timeline
+  // Unconfigured projects keep their existing CLAUDE_MEM_INJECT_MODE behavior
+  // so pre-existing installs don't see a behavior change without /init.
+  const granularity = config.granularity ?? 'auto';
+  if (granularity === 'pointers' || granularity === 'auto') {
+    const artifacts = resolveArtifactPaths(cwd);
+    if (artifacts.configured || granularity === 'pointers') {
+      const recent = listRecentSessionFiles(artifacts.sessionsDir, config.recentSessionCount);
+      return renderArtifactPointers(project, cwd, artifacts, recent);
+    }
+  }
+
+  const useMutations = granularity === 'mutations'
+    || (granularity !== 'observations' && injectMode() === 'mutations');
+  if (useMutations) {
     output.push(`# [${project}] recent context, ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`, '');
-    const digest = renderMutationDigest(db.db as never, projects, {
-      group: config.digestGroup,
-      windowDays: finiteOr(config.digestWindowDays, 7),
-      maxBlocks: finiteOr(config.digestMaxBlocks, 10),
-      filesPerBlock: finiteOr(config.digestFilesPerBlock, 4),
-      describe: config.digestDescribe,
-    });
+    let digest: string[] = [];
+    try {
+      digest = renderMutationDigest(db.db as never, projects, {
+        group: config.digestGroup,
+        windowDays: finiteOr(config.digestWindowDays, 7),
+        maxBlocks: finiteOr(config.digestMaxBlocks, 10),
+        filesPerBlock: finiteOr(config.digestFilesPerBlock, 4),
+        describe: config.digestDescribe,
+      });
+    } catch (err) {
+      // Older DBs predate the mutations table — fall through to legacy
+      // observation rendering instead of failing the whole hook.
+      logger.warn('CONTEXT', 'mutation digest failed, falling back to legacy', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      digest = [];
+    }
     if (digest.length > 0) {
       output.push(...digest);
-    } else {
-      output.push('_No durable changes recorded yet for this project._', '');
+      output.push(
+        'For deeper recall (past decisions, lessons, specs, session history), use the `recall` skill or `mem-search`.',
+      );
+      return output.join('\n').trimEnd();
     }
-    output.push(
-      'For deeper recall (past decisions, lessons, specs, session history), use the `recall` skill or `mem-search`.',
-    );
-    return output.join('\n').trimEnd();
+    // Reset output so legacy renderer starts fresh.
+    output.length = 0;
   }
 
   // Legacy injection (CLAUDE_MEM_INJECT_MODE=legacy).

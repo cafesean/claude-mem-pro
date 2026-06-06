@@ -42,6 +42,8 @@ export interface SettingsDefaults {
   CLAUDE_MEM_DIGEST_MAX_BLOCKS: string;
   CLAUDE_MEM_DIGEST_FILES_PER_BLOCK: string;
   CLAUDE_MEM_DIGEST_DESCRIBE: string;
+  CLAUDE_MEM_CONTEXT_GRANULARITY: string;
+  CLAUDE_MEM_CONTEXT_RECENT_SESSIONS: string;
   CLAUDE_MEM_WELCOME_HINT_ENABLED: string;
   CLAUDE_MEM_FOLDER_CLAUDEMD_ENABLED: string;
   CLAUDE_MEM_FOLDER_USE_LOCAL_MD: string;  
@@ -123,6 +125,8 @@ export class SettingsDefaultsManager {
     CLAUDE_MEM_DIGEST_MAX_BLOCKS: '10',          // max session/topic blocks (flat: max rows)
     CLAUDE_MEM_DIGEST_FILES_PER_BLOCK: '4',      // max sample files listed per block
     CLAUDE_MEM_DIGEST_DESCRIBE: 'true',          // enrich session blocks with the session summary/prompt as the label
+    CLAUDE_MEM_CONTEXT_GRANULARITY: 'auto',      // SessionStart shape: auto | pointers | mutations | observations
+    CLAUDE_MEM_CONTEXT_RECENT_SESSIONS: '5',     // recent session files to list in pointers mode
     CLAUDE_MEM_WELCOME_HINT_ENABLED: 'true',
     CLAUDE_MEM_FOLDER_CLAUDEMD_ENABLED: 'false',
     CLAUDE_MEM_FOLDER_USE_LOCAL_MD: 'false',  // When true, writes to CLAUDE.local.md instead of CLAUDE.md

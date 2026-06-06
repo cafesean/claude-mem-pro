@@ -338,6 +338,7 @@ export class SearchRoutes extends BaseRouteHandler {
     const projectsParam = (req.query.projects as string) || (req.query.project as string);
     const forHuman = req.query.colors === 'true';
     const full = req.query.full === 'true';
+    const cwdParam = (req.query.cwd as string) || '';
 
     if (!projectsParam) {
       this.badRequest(res, 'Project(s) parameter is required');
@@ -351,9 +352,25 @@ export class SearchRoutes extends BaseRouteHandler {
       return;
     }
 
+    const primaryProject = projects[projects.length - 1];
+    const cwd = cwdParam || `/context/${primaryProject}`;
+
+    // Configured projects skip the "no observations" welcome hint — pointer
+    // mode is meaningful even with zero observations because it lists session
+    // files and specs from disk.
+    let pointersConfigured = false;
+    if (cwdParam) {
+      try {
+        const { resolveArtifactPaths } = await import('../../../context/ArtifactPathsResolver.js');
+        pointersConfigured = resolveArtifactPaths(cwdParam).configured;
+      } catch {
+        /* best-effort */
+      }
+    }
+
     const settings = getCachedSettings();
     const hintEnabled = String(settings.CLAUDE_MEM_WELCOME_HINT_ENABLED ?? '').toLowerCase() === 'true';
-    if (hintEnabled && !full) {
+    if (hintEnabled && !full && !pointersConfigured) {
       const sessionStore = this.searchManager.getSessionStore();
       // Memoized: skips the COUNT(*) query once any project in the set has
       // observations. Hot-path: PostToolUse fires after every Read/Edit.
@@ -369,14 +386,11 @@ export class SearchRoutes extends BaseRouteHandler {
 
     const { generateContext } = await import('../../../context-generator.js');
 
-    const primaryProject = projects[projects.length - 1]; 
-    const cwd = `/context/${primaryProject}`;
-
     const contextText = await generateContext(
       {
         session_id: 'context-inject-' + Date.now(),
-        cwd: cwd,
-        projects: projects,
+        cwd,
+        projects,
         full
       },
       forHuman

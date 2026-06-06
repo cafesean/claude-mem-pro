@@ -1,6 +1,6 @@
 {
   "name": "claude-mem-pro",
-  "version": "13.3.0",
+  "version": "13.5.0",
   "description": "Memory compression system for Claude Code - persist context across sessions",
   "keywords": [
     "claude",
@@ -136,6 +136,7 @@
     "glob": "^13.0.6",
     "handlebars": "^4.7.9",
     "ioredis": "^5.10.1",
+    "kysely": "^0.28.17",
     "pg": "^8.20.0",
     "picocolors": "^1.1.1",
     "react": "^19.2.6",

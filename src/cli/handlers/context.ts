@@ -21,7 +21,8 @@ export const contextHandler: EventHandler = {
     const showTerminalOutput = settings.CLAUDE_MEM_CONTEXT_SHOW_TERMINAL_OUTPUT === 'true';
 
     const projectsParam = context.allProjects.join(',');
-    const apiPath = `/api/context/inject?projects=${encodeURIComponent(projectsParam)}`;
+    const cwdParam = `&cwd=${encodeURIComponent(cwd)}`;
+    const apiPath = `/api/context/inject?projects=${encodeURIComponent(projectsParam)}${cwdParam}`;
     const colorApiPath = input.platform === 'claude-code' ? `${apiPath}&colors=true` : apiPath;
 
     const emptyResult: HookResult = {

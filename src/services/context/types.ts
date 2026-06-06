@@ -33,6 +33,12 @@ export interface ContextConfig {
   digestMaxBlocks: number;
   digestFilesPerBlock: number;
   digestDescribe: boolean;
+
+  // SessionStart granularity. 'auto' routes by /init config:
+  //   configured project → 'pointers' (artifact paths only)
+  //   unconfigured       → existing CLAUDE_MEM_INJECT_MODE behavior (mutations/legacy)
+  granularity: 'auto' | 'pointers' | 'mutations' | 'observations';
+  recentSessionCount: number;
 }
 
 export interface Observation {
