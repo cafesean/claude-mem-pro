@@ -13,7 +13,11 @@ import { readStaleMarker } from '../../shared/oauth-token.js';
 
 export const contextHandler: EventHandler = {
   async execute(input: NormalizedHookInput): Promise<HookResult> {
-    const cwd = input.cwd ?? process.cwd();
+    // Hook input takes precedence; fall back to CLAUDE_PROJECT_DIR (always set
+    // by Claude Code for hooks), then process.cwd(). Without this, an empty
+    // input.cwd in a SessionStart payload caused the worker to resolve session
+    // paths against the fake `/context/<project>` cwd and report `(empty)`.
+    const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     const context = getProjectContext(cwd);
     const port = getWorkerPort();
 
