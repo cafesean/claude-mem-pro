@@ -11,8 +11,12 @@ per-project config.
 
 ## Step 0: Resolve artifact locations (REQUIRED)
 
+`$CLAUDE_PLUGIN_ROOT` is not set in this Bash environment, so resolve the plugin root
+into `$CMPRO` first, then call the script:
+
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/scripts/artifact-paths.cjs" get
+CMPRO=$(node -e 'const fs=require("fs"),os=require("os"),p=require("path");const cfg=process.env.CLAUDE_CONFIG_DIR||p.join(os.homedir(),".claude");const C=[];if(process.env.CLAUDE_PLUGIN_ROOT)C.push(process.env.CLAUDE_PLUGIN_ROOT);try{for(const k of Object.values(JSON.parse(fs.readFileSync(p.join(cfg,"plugins/known_marketplaces.json"),"utf8")))){const s=(k.source&&k.source.path)||k.installLocation;if(s)C.push(p.join(s,"plugin"),s);}}catch(e){}try{const b=p.join(cfg,"plugins/cache/cafesean/claude-mem-pro");for(const v of fs.readdirSync(b))C.push(p.join(b,v,"plugin"),p.join(b,v));}catch(e){}C.push(p.join(cfg,"plugins/marketplaces/cafesean/plugin"));for(const c of C)if(fs.existsSync(p.join(c,"scripts/artifact-paths.cjs"))){process.stdout.write(c);break;}')
+node "$CMPRO/scripts/artifact-paths.cjs" get
 ```
 
 If `configured: false` → stop and tell the user to run `/init` first. Otherwise use

@@ -16,10 +16,18 @@ The config is stored as a top-level `projects` map in claude-mem's `settings.jso
 
 ## Step 1 — Detect the project
 
-Run the resolver to see the project key and whether it's already configured:
+Run the resolver to see the project key and whether it's already configured.
+
+> **Note:** `$CLAUDE_PLUGIN_ROOT` is only set inside hook subprocesses — it is **not**
+> populated in the Bash environment that runs command bodies. So every block below
+> resolves the plugin root itself into `$CMPRO` (checks `$CLAUDE_PLUGIN_ROOT`, then the
+> directory/cache/marketplace install locations) before calling the script. `check`
+> exits `1` when the project isn't configured yet — that's an expected signal, not a
+> crash.
 
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/scripts/artifact-paths.cjs" check
+CMPRO=$(node -e 'const fs=require("fs"),os=require("os"),p=require("path");const cfg=process.env.CLAUDE_CONFIG_DIR||p.join(os.homedir(),".claude");const C=[];if(process.env.CLAUDE_PLUGIN_ROOT)C.push(process.env.CLAUDE_PLUGIN_ROOT);try{for(const k of Object.values(JSON.parse(fs.readFileSync(p.join(cfg,"plugins/known_marketplaces.json"),"utf8")))){const s=(k.source&&k.source.path)||k.installLocation;if(s)C.push(p.join(s,"plugin"),s);}}catch(e){}try{const b=p.join(cfg,"plugins/cache/cafesean/claude-mem-pro");for(const v of fs.readdirSync(b))C.push(p.join(b,v,"plugin"),p.join(b,v));}catch(e){}C.push(p.join(cfg,"plugins/marketplaces/cafesean/plugin"));for(const c of C)if(fs.existsSync(p.join(c,"scripts/artifact-paths.cjs"))){process.stdout.write(c);break;}')
+node "$CMPRO/scripts/artifact-paths.cjs" check
 ```
 
 - Show the user the `projectKey` and the project root (current working directory).
@@ -55,6 +63,7 @@ Pipe the collected values as JSON into the resolver's `set`. Only include fields
 user provided:
 
 ```bash
+CMPRO=$(node -e 'const fs=require("fs"),os=require("os"),p=require("path");const cfg=process.env.CLAUDE_CONFIG_DIR||p.join(os.homedir(),".claude");const C=[];if(process.env.CLAUDE_PLUGIN_ROOT)C.push(process.env.CLAUDE_PLUGIN_ROOT);try{for(const k of Object.values(JSON.parse(fs.readFileSync(p.join(cfg,"plugins/known_marketplaces.json"),"utf8")))){const s=(k.source&&k.source.path)||k.installLocation;if(s)C.push(p.join(s,"plugin"),s);}}catch(e){}try{const b=p.join(cfg,"plugins/cache/cafesean/claude-mem-pro");for(const v of fs.readdirSync(b))C.push(p.join(b,v,"plugin"),p.join(b,v));}catch(e){}C.push(p.join(cfg,"plugins/marketplaces/cafesean/plugin"));for(const c of C)if(fs.existsSync(p.join(c,"scripts/artifact-paths.cjs"))){process.stdout.write(c);break;}')
 echo '{
   "sessionsDir": "_ai/sessions",
   "specsDirs": ["_context"],
@@ -62,7 +71,7 @@ echo '{
   "wikiDir": "docs/wiki",
   "currentSessionFile": "_ai/sessions/.current-session",
   "projectTags": ["web", "api", "docs"]
-}' | node "$CLAUDE_PLUGIN_ROOT/scripts/artifact-paths.cjs" set
+}' | node "$CMPRO/scripts/artifact-paths.cjs" set
 ```
 
 Then confirm by running `... get` and showing the resolved (absolute) paths back to the
