@@ -76,6 +76,31 @@ function getPluginVersion() {
   }
 }
 
+/**
+ * Find the version Claude Code currently has pinned for this plugin. The
+ * pin lives in `~/.claude/plugins/installed_plugins.json` and is what
+ * Claude Code uses to set CLAUDE_PLUGIN_ROOT for hook subprocesses. The
+ * pin doesn't auto-bump on each sync — `/reload-plugins` re-reads the
+ * marketplace and updates it. So between syncs the pinned cache dir is
+ * normally STALE. Mirroring the latest build into that dir is what
+ * makes "save → next SessionStart picks up changes" actually work
+ * without `/reload-plugins`.
+ */
+function detectPinnedVersion(buildVersion) {
+  const pluginsRegistry = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
+  if (!existsSync(pluginsRegistry)) return null;
+  try {
+    const registry = JSON.parse(readFileSync(pluginsRegistry, 'utf-8'));
+    const entries = registry?.plugins?.['claude-mem-pro@cafesean'];
+    if (!Array.isArray(entries) || entries.length === 0) return null;
+    const pin = entries[0];
+    if (!pin?.version || pin.version === buildVersion) return null;
+    return { pinnedVersion: pin.version, pinnedPath: pin.installPath };
+  } catch {
+    return null;
+  }
+}
+
 function detectInstalledVersion(buildVersion) {
   const dataDir = process.env.CLAUDE_MEM_DATA_DIR || path.join(os.homedir(), '.claude-mem');
   const settingsPath = path.join(dataDir, 'settings.json');
@@ -113,6 +138,7 @@ function detectInstalledVersion(buildVersion) {
   return { installedVersion, installedPath };
 }
 
+const pinnedMismatch = detectPinnedVersion(getPluginVersion());
 const installedMismatch = detectInstalledVersion(getPluginVersion());
 if (installedMismatch) {
   console.log('');
@@ -170,6 +196,22 @@ try {
     );
     console.log(`Running bun install in installed-version cache (${installedMismatch.installedVersion})...`);
     execSync(`bun install`, { cwd: INSTALLED_CACHE_PATH, stdio: 'inherit' });
+  }
+
+  if (
+    pinnedMismatch
+    && pinnedMismatch.pinnedPath
+    && existsSync(pinnedMismatch.pinnedPath)
+    && pinnedMismatch.pinnedVersion !== version
+    && (!installedMismatch || pinnedMismatch.pinnedVersion !== installedMismatch.installedVersion)
+  ) {
+    console.log(`Mirroring to Claude Code's pinned cache (${pinnedMismatch.pinnedVersion}) so SessionStart picks up changes without /reload-plugins...`);
+    execSync(
+      `rsync -av --delete --exclude=.git ${pluginGitignoreExcludes} plugin/ "${pinnedMismatch.pinnedPath}/"`,
+      { stdio: 'inherit' }
+    );
+    console.log(`Running bun install in pinned cache (${pinnedMismatch.pinnedVersion})...`);
+    execSync(`bun install`, { cwd: pinnedMismatch.pinnedPath, stdio: 'inherit' });
   }
 
   console.log('\x1b[32m%s\x1b[0m', 'Sync complete!');

@@ -2,6 +2,8 @@
 import { relative } from 'path';
 import { existsSync, readFileSync } from 'fs';
 import type { ArtifactPaths, RecentSessionFile } from '../ArtifactPathsResolver.js';
+import type { Observation } from '../types.js';
+import { renderCriticalObservations } from './CriticalObservationsRenderer.js';
 
 const NEXT_STEPS_HEADERS = /^##\s+(Next Steps|Next steps|TODO|Follow-?ups?)\s*$/i;
 const ANY_H2 = /^##\s/;
@@ -305,7 +307,8 @@ export function renderArtifactPointers(
   project: string,
   cwd: string,
   artifacts: ArtifactPaths,
-  recentSessions: RecentSessionFile[]
+  recentSessions: RecentSessionFile[],
+  observations?: Observation[]
 ): string {
   const out: string[] = [];
   out.push(`# [${project}] recent context, ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`, '');
@@ -314,6 +317,9 @@ export function renderArtifactPointers(
     'Below are pointers — read on demand via the `recall` skill or directly with Read.',
     ''
   );
+
+  const critical = renderCriticalObservations(observations);
+  if (critical.length > 0) out.push(...critical);
 
   if (artifacts.currentSessionFile && existsSync(artifacts.currentSessionFile)) {
     out.push(`## Current session`);

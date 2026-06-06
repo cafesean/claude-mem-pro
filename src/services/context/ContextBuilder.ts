@@ -12,6 +12,7 @@ import { calculateTokenEconomics } from './TokenCalculator.js';
 import {
   queryObservations,
   queryObservationsMulti,
+  queryCriticalObservations,
   querySummaries,
   querySummariesMulti,
   getPriorSessionMessages,
@@ -99,7 +100,18 @@ function buildContextOutput(
     const artifacts = resolveArtifactPaths(cwd);
     if (artifacts.configured || granularity === 'pointers') {
       const recent = listRecentSessionFiles(artifacts.sessionsDir, config.recentSessionCount);
-      return renderArtifactPointers(project, cwd, artifacts, recent);
+      // Critical observations are pulled from a separate, broader pool so
+      // older decisions/security/deploy entries aren't pushed off by fresh
+      // change/discovery rows in the main observation list.
+      let critical: Observation[] = [];
+      try {
+        critical = queryCriticalObservations(db, projects);
+      } catch (err) {
+        logger.warn('CONTEXT', 'critical observation query failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return renderArtifactPointers(project, cwd, artifacts, recent, critical);
     }
   }
 

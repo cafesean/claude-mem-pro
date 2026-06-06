@@ -60,6 +60,64 @@ export function queryObservations(
   ) as Observation[];
 }
 
+/**
+ * Critical observations are sourced separately from the standard timeline pool
+ * because the regular `queryObservations` LIMIT (default 50) gets dominated by
+ * fresh `change`/`discovery` rows and pushes older decisions, security notes,
+ * and deploys off the list. Looks back 90 days, oversamples N rows by type,
+ * leaves scoring/cap to the renderer.
+ */
+const CRITICAL_OBSERVATION_TYPES = [
+  'security_alert', 'security_note',
+  'decision',
+  'deployment', 'release', 'build', 'migration',
+  'architecture', 'lesson',
+  'bugfix',
+];
+
+const CRITICAL_WINDOW_DAYS = 90;
+const CRITICAL_OVERSAMPLE = 30;
+
+export function queryCriticalObservations(
+  db: SessionStore,
+  projects: string[],
+): Observation[] {
+  if (projects.length === 0) return [];
+  const typePlaceholders = CRITICAL_OBSERVATION_TYPES.map(() => '?').join(',');
+  const projectPlaceholders = projects.map(() => '?').join(',');
+  const sinceEpoch = Date.now() - CRITICAL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  return db.db.prepare(`
+    SELECT
+      o.id,
+      o.memory_session_id,
+      COALESCE(s.platform_source, 'claude') as platform_source,
+      o.type,
+      o.title,
+      o.subtitle,
+      o.narrative,
+      o.facts,
+      o.concepts,
+      o.files_read,
+      o.files_modified,
+      o.discovery_tokens,
+      o.created_at,
+      o.created_at_epoch
+    FROM observations o
+    LEFT JOIN sdk_sessions s ON o.memory_session_id = s.memory_session_id
+    WHERE (o.project IN (${projectPlaceholders}) OR o.merged_into_project IN (${projectPlaceholders}))
+      AND o.type IN (${typePlaceholders})
+      AND o.created_at_epoch >= ?
+    ORDER BY o.created_at_epoch DESC
+    LIMIT ?
+  `).all(
+    ...projects,
+    ...projects,
+    ...CRITICAL_OBSERVATION_TYPES,
+    sinceEpoch,
+    CRITICAL_OVERSAMPLE,
+  ) as Observation[];
+}
+
 export function querySummaries(
   db: SessionStore,
   project: string,
