@@ -19,8 +19,11 @@ CMPRO=$(node -e 'const fs=require("fs"),os=require("os"),p=require("path");const
 node "$CMPRO/scripts/artifact-paths.cjs" get
 ```
 
-If `configured: false` → stop and tell the user to run `/init` first. Otherwise use
-`sessionsDir` and `currentSessionFile` from the output.
+If `configured: true` → use `sessionsDir` and `currentSessionFile` from the output.
+
+If `configured: false` → there's no recorded sessions location, so there's no active
+session to end. Don't send the user to `/init`; tell them to start one with
+`/session-start` (which sets the location up inline on first use). Stop here.
 
 ## Step 1: Find the matching session
 

@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "claude-mem-pro",
-      "version": "13.4.1",
+      "version": "13.7.0",
       "source": "./plugin",
       "description": "claude-mem-pro: persistent memory + configurable artifact locations + session lifecycle commands (init, session-start/update/end)"
     }

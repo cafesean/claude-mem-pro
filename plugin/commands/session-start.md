@@ -20,9 +20,25 @@ CMPRO=$(node -e 'const fs=require("fs"),os=require("os"),p=require("path");const
 node "$CMPRO/scripts/artifact-paths.cjs" get
 ```
 
-- If `configured: false` → **stop and configure first.** Tell the user this project
-  isn't set up yet and run `/init` (offer to walk them through it), then re-run this
-  command. Do NOT write a session file to an assumed location.
+- If `configured: false` → **don't refuse.** The project just hasn't recorded where
+  session files live yet, so ask the user inline right now (don't make them go run
+  `/init` first):
+  > "This project isn't set up for claude-mem-pro session files yet. Where should I write
+  > them? (default: `_ai/sessions`)"
+
+  Accept a relative, absolute, or `~`-prefixed path; if they accept the default, use
+  `_ai/sessions`. Persist it so this is a **one-time** ask (re-resolve `$CMPRO` the same
+  way as above, then pipe the minimal config into `set`):
+
+  ```bash
+  echo '{"sessionsDir":"<their-answer>","currentSessionFile":"<their-answer>/.current-session"}' \
+    | node "$CMPRO/scripts/artifact-paths.cjs" set
+  ```
+
+  Then re-run `node "$CMPRO/scripts/artifact-paths.cjs" get` to pick up the now-absolute
+  `sessionsDir` / `currentSessionFile` and continue. A fuller setup (specs, memory, wiki,
+  project tags) is optional — mention the user can run `/init` later for that; it is not
+  needed to start a session.
 - If `configured: true` → use `sessionsDir` for the file, `projectTags` for the `[tag]`
   in the filename, and `currentSessionFile` for the active-session tracker. All paths in
   the output are already absolute.
@@ -46,8 +62,13 @@ grep/filtering by tag.
 
 - If `projectTags` from config is non-empty, pick the tag that matches the work (must be
   one of the listed tags).
-- If `projectTags` is empty, use a short kebab-case tag describing the sub-area or repo
-  you're working in.
+- If `projectTags` is empty, use a short, stable kebab-case tag you can grep on later.
+  Pick from one of these categories:
+  - **Project name** — `[cadra]`, `[yobo]`, `[plugin-marketplace]`
+  - **Feature area** — `[billing]`, `[onboarding]`, `[search]`
+  - **Repo / codebase** — `[ai-monorepo]`, `[obsidian-vault]`
+  - **Activity type** — `[research]`, `[debugging]`, `[refactor]`
+  - **Cross-cutting** — `[infra]`, `[meta]`, `[planning]`
 
 ### Correct vs wrong
 
@@ -76,7 +97,7 @@ date: YYYY-MM-DD
 projects: [project-name]
 branch: branch-name
 status: in-progress
-type: feature  # feature | bugfix | refactor | investigation | qa | migration | infrastructure
+type: feature  # feature | bugfix | refactor | investigation | qa | migration | infrastructure | research | planning | review | docs
 topics: []  # from TOPIC TAXONOMY below
 tags: []  # additional semantic tags for RAG retrieval
 last_updated: ISO-8601-timestamp
@@ -96,6 +117,11 @@ target for RAG retrieval.)
 
 ---
 
+## Context
+
+(Background: what state the project/codebase was in at the start, what preceded this
+session, what constraints apply. Optional but high-value for retrieval.)
+
 ## SDK Notes
 
 (SDK-specific findings will be logged here during updates)
@@ -108,6 +134,11 @@ target for RAG retrieval.)
 
 | Document | Path | Why It Matters |
 |----------|------|----------------|
+
+## Decisions
+
+(Decisions made during the session, with reasoning — see session-update for full format:
+**Decision:** ... **Why:** ... **Alternatives considered:** ...)
 
 ## Lessons Learned
 

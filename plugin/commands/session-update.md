@@ -20,8 +20,24 @@ CMPRO=$(node -e 'const fs=require("fs"),os=require("os"),p=require("path");const
 node "$CMPRO/scripts/artifact-paths.cjs" get
 ```
 
-If `configured: false` → stop and tell the user to run `/init` first. Otherwise use
-`sessionsDir` and `currentSessionFile` from the output.
+If `configured: true` → use `sessionsDir` and `currentSessionFile` from the output.
+
+If `configured: false` → **don't refuse.** Ask the user inline where session files should
+live (don't send them to `/init`):
+> "This project isn't set up for claude-mem-pro session files yet. Where should I write
+> them? (default: `_ai/sessions`)"
+
+Accept a relative, absolute, or `~`-prefixed path (default `_ai/sessions`), then persist
+it so it's a **one-time** ask (re-resolve `$CMPRO` as above, then pipe into `set`):
+
+```bash
+echo '{"sessionsDir":"<their-answer>","currentSessionFile":"<their-answer>/.current-session"}' \
+  | node "$CMPRO/scripts/artifact-paths.cjs" set
+```
+
+Re-run `node "$CMPRO/scripts/artifact-paths.cjs" get` to pick up the absolute paths, then
+continue to Step 1. (There won't be an active session yet, so Step 1 will point the user
+to `/session-start` — that's expected.)
 
 ## Step 1: Find Active Session
 
@@ -48,7 +64,7 @@ date: 2026-06-03
 projects: [project-a, project-b]
 branch: feature/my-feature
 status: in-progress  # in-progress | completed | blocked | paused
-type: feature  # feature | bugfix | refactor | investigation | qa | migration | infrastructure
+type: feature  # feature | bugfix | refactor | investigation | qa | migration | infrastructure | research | planning | review | docs
 topics: [rls, caching, org-isolation, permissions]  # from TOPIC TAXONOMY (see session-start)
 tags: [caching, cdn, performance]  # additional semantic tags for RAG retrieval
 last_updated: 2026-06-03T14:30:00
@@ -116,6 +132,15 @@ D src/lib/old-helper.ts  — Removed: replaced by new-helper.ts
 - Branch: `feature/my-feature`
 - Last commit: `def5678 fix(cache): default scope to user`
 - Working tree: clean / N uncommitted changes
+
+#### Commands Run
+
+(Include when non-trivial commands were run — test suites, builds, migrations, scripts.
+The exact command and its result are high-value search keywords.)
+
+| Command | Purpose | Result |
+|---------|---------|--------|
+| `pnpm test src/api/auth` | Verify auth tests pass after refactor | 18/18 passing |
 ```
 
 ## Step 4: Update Standing Sections
@@ -208,6 +233,20 @@ misunderstanding, and the lesson.
 ### Requirements additions (user added scope mid-session)
 - **User said**: "(exact words)"
   - Impact on design/implementation
+```
+
+### Decisions Section
+
+Maintain a `## Decisions` section capturing decisions made during the session, with the
+reasoning and the roads not taken. Each entry is independently retrievable, so write the
+context into it.
+
+```markdown
+## Decisions
+
+- **Decision:** Use Postgres LISTEN/NOTIFY instead of Redis pubsub for real-time updates
+  **Why:** Reduces infra surface, transactional consistency with the data writes
+  **Alternatives considered:** Redis pubsub (rejected: extra service), polling (rejected: latency)
 ```
 
 ### Next Steps Section
