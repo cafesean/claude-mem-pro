@@ -1,7 +1,6 @@
 ---
 name: session-update
 description: Update the current development session with detailed, RAG-optimized content. Use when logging progress, capturing architecture issues, recording SDK/library patterns, or documenting debugging sessions. Generates session files designed for vector embedding and semantic search.
-model: sonnet
 ---
 
 # Session Update

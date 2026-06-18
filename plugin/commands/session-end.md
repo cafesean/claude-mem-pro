@@ -1,7 +1,6 @@
 ---
 name: session-end
 description: End the current development session by appending a comprehensive summary and removing it from the active-session tracker. Use when wrapping up a development session.
-model: sonnet
 ---
 
 # Session End

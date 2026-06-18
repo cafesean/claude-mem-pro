@@ -1,7 +1,6 @@
 ---
 name: session-start
 description: Start a new development session with YAML frontmatter and RAG-optimized structure. Creates a session file in the project's configured sessions directory, with semantic tags, SDK tracking, commit logging, and structured sections for architecture issues and lessons learned.
-model: sonnet
 ---
 
 # Session Start

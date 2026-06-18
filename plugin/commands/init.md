@@ -1,7 +1,6 @@
 ---
 name: init
 description: Configure where this project's artifacts live (session files, specs, memory, wiki) so claude-mem-pro's recall, timeline, and session commands know where to read and write. Run once per project. Re-run to reconfigure.
-model: sonnet
 ---
 
 # claude-mem-pro init
